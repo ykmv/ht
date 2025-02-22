@@ -36,7 +36,7 @@ char *habit_remove_arg = "-r";
 char *habit_list_arg = "-l";
 char *habit_select_default_arg = "-s";
 char *habit_folder_select_arg = "-f";
-char *habit_display_arg = "-d";
+char *habit_display_arg = "-c";
 
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
@@ -70,13 +70,15 @@ main(int argc, char *argv[]) {
       if (habit.days_count == 0) {
          habit_add_today(&habit, DAY_COMPLETE); 
       }
-      else if (date_compare(habit.days[habit.days_count-1].timestamp, 
-               time(NULL)) == 0) {
+      else if (date_compare(
+                  habit.days[habit.days_count-1].timestamp, 
+                  time(NULL)
+               ) == 0) {
          if (habit.days[habit.days_count-1].marked == DAY_UNMARKED ||
              habit.days[habit.days_count-1].marked == DAY_FAILED)
                habit.days[habit.days_count-1].marked = DAY_COMPLETE;
          else habit.days[habit.days_count-1].marked = DAY_FAILED;
-      }
+      } else habit_add_today(&habit, DAY_COMPLETE); 
 
       habit_file_write(&habit, "w");
       free(habit.days);
@@ -110,6 +112,22 @@ main(int argc, char *argv[]) {
       if (err) {
          fprintf(stderr, "Unable to write a default habit\n");
          return 1;
+      }
+   } else if (!strcmp(argv[1], habit_list_arg)) {
+      printf("habit_list_arg\n");
+   } else if (!strcmp(argv[1], habit_display_arg)) {
+      Habit habit = {
+         .name = argv[2],
+         .days_count = 0,
+      };
+      habit_file_read(&habit);
+      for (int i = 0; i < habit.days_count; i++) {
+         struct tm *timeinfo = localtime(&habit.days[i].timestamp);
+         printf("day: %d.%d.%d marked: %d\n", 
+                timeinfo->tm_year + 1900,
+                timeinfo->tm_mon,
+                timeinfo->tm_mday,
+                habit.days[i].marked);
       }
    }
 
@@ -236,14 +254,14 @@ ymd_to_time_t(int year, int month, int day) {
 
 int
 date_compare(time_t ts1, time_t ts2) {
-   struct tm *tm1;
-   struct tm *tm2;
-   tm1 = localtime(&ts1);
-   tm2 = localtime(&ts2);
+   struct tm tm1;
+   struct tm tm2;
+   localtime_r(&ts1, &tm1);
+   localtime_r(&ts2, &tm2);
 
-   if (tm1->tm_year == tm2->tm_year &&
-       tm1->tm_mon == tm2->tm_mon &&
-       tm1->tm_mday == tm2->tm_mday)
+   if (tm1.tm_year == tm2.tm_year &&
+       tm1.tm_mon == tm2.tm_mon &&
+       tm1.tm_mday == tm2.tm_mday)
    {
       return 0;
    }
@@ -317,5 +335,5 @@ print_help() {
    printf("ht -H <habit> : mark any habit that isn't default\n");
    printf("ht -H <habit> -d <YYYY.MM.DD> : mark any day of the habit\n");
    printf("ht -c : display calender with a default habit\n");
-   printf("ht -c -H <habit> : display calender with a selected habit\n");
+   printf("ht -c <habit> : display calender with a selected habit\n");
 }
