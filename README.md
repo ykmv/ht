@@ -1,5 +1,6 @@
 # ht - CLI Habit Tracker
 A simple CLI habit tracker written in C. 
+(The project is still in development)
 
 ```
 ht -h : print this message
