@@ -1,3 +1,3 @@
 #!/bin/sh
 
-gcc main.c -o ht
+gcc -g main.c -o ht
