@@ -1,4 +1,4 @@
- === ht - CLI Habit Tracker === 
+# ht - CLI Habit Tracker
 A simple CLI habit tracker written in C. 
 
 ```
