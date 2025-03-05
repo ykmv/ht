@@ -1,8 +1,9 @@
 # ht - CLI Habit Tracker
 A simple CLI habit tracker written in C. 
-(The project is still in development)
 
+(The project is still in development)
 ```
+ === ht - CLI Habit Tracker === 
 ht -h : print this message
 ht -a <name> : add new habit
 !TBD! ht -r <name> : remove habit

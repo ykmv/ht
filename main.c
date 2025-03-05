@@ -9,7 +9,6 @@
 // TODO: add multiple days in one command
 // TODO: improve cli handling
 // TODO: delete days
-// TODO: GitHub-like calender of habits
 // TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
 //       by the means of env variable
 // TODO: as of now, it is very difficult to select a habit 
@@ -640,8 +639,8 @@ print_help() {
    printf(" === ht - CLI Habit Tracker === \n");
    printf("ht -h : print this message\n");
    printf("ht -a <name> : add new habit\n");
-   printf("!TBD! ht -r <name> : remove habit\n");
-   printf("!TBD! ht -l        : list habits\n");
+   printf("ht -r <name> : remove habit\n");
+   printf("ht -l        : list habits\n");
    printf("ht -s <name> : select habit as a default one\n");
    printf("ht -s : unmark habit as default one (if it it was selected beforehand\n");
    printf("ht : mark default habit as completed for today\n");
