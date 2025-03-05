@@ -9,13 +9,8 @@
 // TODO: add multiple days in one command
 // TODO: improve cli handling
 // TODO: delete days
-// TODO: delete habits
-// TODO: verbose list of habits (with stats)
-//       (also the stats are never actually written in the habit file,
-//        except the creation date)
 // TODO: GitHub-like calender of habits
 // TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
-// TODO: refactoring (some code looks horrendous)
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
 
@@ -27,9 +22,18 @@
 
 extern int errno;
 
+#define ANSI_BGRED "\e[41m"
+#define ANSI_BGGRN "\e[42m"
+#define ANSI_BGIBLK "\e[0;100m"
+#define ANSI_BGGRY "\e[40m"
+#define ANSI_RESET "\e[0m"
+#define GRAPH_BLANK_EVEN 2
+#define GRAPH_BLANK_ODD 3
+
+
 #define DAY_UNMARKED 0
 #define DAY_COMPLETE 1
-#define DAY_FAILED -1
+#define DAY_FAILED  -1
 typedef struct {
    signed int marked;
    time_t timestamp;
@@ -52,15 +56,28 @@ const char *default_habit_filename = "default";
 const char *habit_folder_path_env_var = "HTDIR";
 const char *default_habit_path = "/.local/share/ht";
 
-char *habit_create_arg = "-a";
-char *habit_remove_arg = "-r";
-char *habit_list_arg = "-l";
-char *habit_select_default_arg = "-s";
-char *habit_folder_select_arg = "-f";
-char *habit_display_arg = "-c";
-char *habit_add_day_arg = "-d";
-char *habit_non_default_arg = "-H";
-char *print_help_arg = "-h";
+const char *habit_create_arg = "-a";
+const char *habit_remove_arg = "-r";
+const char *habit_list_arg = "-l";
+const char *habit_select_default_arg = "-s";
+const char *habit_folder_select_arg = "-f";
+const char *habit_display_arg = "-c";
+const char *habit_add_day_arg = "-d";
+const char *habit_non_default_arg = "-H";
+const char *print_help_arg = "-h";
+
+const char *graph_jan = "Jan";
+const char *graph_feb = "Feb";
+const char *graph_mar = "Mar";
+const char *graph_apr = "Apr";
+const char *graph_may = "May";
+const char *graph_jun = "Jun";
+const char *graph_jul = "Jul";
+const char *graph_aug = "Aug";
+const char *graph_sep = "Sep";
+const char *graph_oct = "Oct";
+const char *graph_nov = "Nov";
+const char *graph_dec = "Dec";
 
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
@@ -80,6 +97,7 @@ char *default_habit_path_make();
 void switch_day_mark(Day *day);
 void calc_stats(Habit *habit);
 char *day_mark_str(int day_mark);
+int habit_exists(Habit *habit);
 
 int
 main(int argc, char *argv[]) {
@@ -114,21 +132,22 @@ main(int argc, char *argv[]) {
       if (dc) {
          habit_add_today(&habit, DAY_COMPLETE);
          printf("TODAY: %s\n",
-                day_mark_str(habit.days[habit.days_count-1].marked));   
+                day_mark_str(habit.days[habit.days_count-1].marked));
       } else {
          int temp = habit.days[habit.days_count-1].marked;
          switch_day_mark(&habit.days[habit.days_count-1]);
          printf("TODAY: %s -> %s\n", 
                 day_mark_str(temp),
-                day_mark_str(habit.days[habit.days_count-1].marked));   
+                day_mark_str(habit.days[habit.days_count-1].marked));
       }
 
+      calc_stats(&habit);
       habit_file_write(&habit, "w");
    } else if (!strcmp(argv[1], print_help_arg)) {
       print_help();
    } else if (!strcmp(argv[1], habit_create_arg)) {
       if (argc < 3) {
-         printf("No habit name provided\n");
+         fprintf(stderr, "No habit name provided\n");
          return 1;
       }
       habit.name = argv[2];
@@ -139,6 +158,26 @@ main(int argc, char *argv[]) {
          return 1;
       } else {
          printf("Habit %s created\n", habit.name);
+      }
+   } else if (!strcmp(argv[1], habit_remove_arg)) {
+      if (argc >= 3) {
+         habit.name = argv[2];
+         if (habit_exists(&habit)) {
+            fprintf(stderr, "%s does not exist\n", habit.name);
+            return 1;
+         }
+         char *filename = habit_make_filename(&habit);
+         char choice = 0;
+
+         printf("Are you sure you want to delete this habit?: [y/N] ");
+         scanf("%c", &choice);
+         if (choice == 'y' || choice == 'Y') {
+            remove(filename);
+            printf("%s has been deleted successfully\n", habit.name);
+         } else return 0;
+      } else {
+         fprintf(stderr, "No habit name was provided\n");
+         return 1;
       }
    } else if (!strcmp(argv[1], habit_select_default_arg)) {
       if (argc >= 3) {
@@ -161,8 +200,6 @@ main(int argc, char *argv[]) {
       }
    } else if (!strcmp(argv[1], habit_list_arg)) {
       struct dirent *de;
-      int habits_c = 0;
-
       DIR *dr = opendir(habit_path);
       if (dr == NULL) {
          perror("ERROR");
@@ -171,10 +208,25 @@ main(int argc, char *argv[]) {
          if (strcmp(de->d_name, "..") 
              && strcmp(de->d_name, ".")
              && strcmp(de->d_name, "default")) {
+            habit.name = calloc(strlen(de->d_name)-3, sizeof(char));
+            habit.days_count = 0;
             for (int i = 0; i < strlen(de->d_name)-4; i++) {
-               printf("%c", de->d_name[i]);
+               habit.name[i] = de->d_name[i];
             }
-            printf("\n");
+            habit.name[strlen(de->d_name)] = '\0';
+            habit_file_read(&habit);
+            struct tm *ti = localtime(&habit.stats.creation_timestamp);
+            printf("%s", habit.name);
+            if (habit.days_count > 0) {
+               printf(" (TODAY: %s)\n", day_mark_str(habit.days[habit.days_count-1].marked));
+               printf("   Days completed: %d; failed: %d; created %d.%02d.%02d\n", 
+                      habit.stats.completed_days,
+                      habit.stats.failed_days,
+                      ti->tm_year + 1900,
+                      ti->tm_mon + 1,
+                      ti->tm_mday);
+            }
+            else printf("\n");
          }
    } else if (!strcmp(argv[1], habit_display_arg)) {
       if (argc == 2) habit.name = default_habit_read();
@@ -182,7 +234,7 @@ main(int argc, char *argv[]) {
 
       if (habit.name == NULL && argc == 2) {
          fprintf(stderr, 
-            "No default habit was selected and no other habit was provvided\n");
+            "No default habit was selected and no other habit was provided\n");
          return 1;
       } else if (habit.name == NULL) {
          fprintf(stderr, "No habit name was provided\n");
@@ -191,29 +243,95 @@ main(int argc, char *argv[]) {
 
       habit_file_read(&habit);
       printf("Habit name: %s\n", habit.name);
+      if (habit.days_count != 0) {
+         int graph[7][52] = {0};
+         time_t t = time(NULL);
+         struct tm *ti = localtime(&t);
+         int offset = (ti->tm_wday == 0) ?
+            7 : ti->tm_wday;
+         offset++;
 
-      for (int i = 0; i < habit.days_count; i++) {
-         struct tm *timeinfo = localtime(&habit.days[i].timestamp);
-         printf("day: %d.%02d.%02d ",
-                timeinfo->tm_year + 1900,
-                timeinfo->tm_mon + 1,
-                timeinfo->tm_mday);
-         switch(habit.days[i].marked) {
-            case DAY_UNMARKED: {
-               printf("unmarked\n"); 
-            } break;
-            case DAY_COMPLETE: {
-               printf("DONE\n"); 
-            } break;
-            case DAY_FAILED: {
-               printf("fail\n"); 
-            } break;
+         int last_column = 40;
+         int pattern = 0;
+         for (int y = 51; y >= 0; y--) {
+            for (int x = 6; x >= 0; x--) {
+               if (y == 51 && offset != 0) {
+                  offset--;
+                  continue;
+               } else {
+                  Day *day = day_exists(&habit, t);
+                  if (day) {
+                     if (day->marked == DAY_COMPLETE || day->marked == DAY_FAILED)
+                        graph[x][y] = day->marked;
+                  } else if (pattern % 2 == 0) {
+                     graph[x][y] = GRAPH_BLANK_EVEN;
+                  } else if (pattern % 2 == 1) {
+                     graph[x][y] = GRAPH_BLANK_ODD;
+                  }
+                  t -= 86400;
+                  pattern++;
+               }
+            }
+            if (date_compare(t, habit.days[0].timestamp) == -1 
+                && y <= last_column) {
+               last_column = y;
+               break;
+            }
+         }
+
+         for (int x = 0; x < 7; x++) {
+            switch (x) {
+               case 0: printf("Mon"); break;
+               case 2: printf("Wed"); break;
+               case 4: printf("Fri"); break;
+               case 6: printf("Sun"); break;
+               default: printf("   ");
+            }
+            for (int y = last_column; y < 52; y++) {
+               switch(graph[x][y]) {
+                  case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
+                  case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
+                  case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
+                  case GRAPH_BLANK_ODD: 
+                     printf(ANSI_BGIBLK "  " ANSI_RESET); break;
+                  case GRAPH_BLANK_EVEN: 
+                     printf(ANSI_BGGRY "  " ANSI_RESET); break;
+               }
+            }
+            switch (x) {
+               case 0: printf("Mon"); break;
+               case 2: printf("Wed"); break;
+               case 4: printf("Fri"); break;
+               case 6: printf("Sun"); break;
+               default: printf("   ");
+            }
+            printf("\n");
          }
       }
 
-      if (habit.stats.completed_days == 0 
-         || habit.stats.failed_days == 0 
-         || habit.stats.creation_timestamp == 0)
+      /*int a[7][*/
+
+      /*for (int i = 0; i < habit.days_count; i++) {*/
+      /*   struct tm *timeinfo = localtime(&habit.days[i].timestamp);*/
+      /*   printf("day: %d.%02d.%02d ",*/
+      /*          timeinfo->tm_year + 1900,*/
+      /*          timeinfo->tm_mon + 1,*/
+      /*          timeinfo->tm_mday);*/
+      /*   switch(habit.days[i].marked) {*/
+      /*      case DAY_UNMARKED: {*/
+      /*         printf("unmarked\n"); */
+      /*      } break;*/
+      /*      case DAY_COMPLETE: {*/
+      /*         printf("DONE\n"); */
+      /*      } break;*/
+      /*      case DAY_FAILED: {*/
+      /*         printf("fail\n"); */
+      /*      } break;*/
+      /*   }*/
+      /*}*/
+
+      if (habit.stats.completed_days == 0
+         && habit.stats.failed_days == 0)
             calc_stats(&habit);
       printf("Total days: %d\n", habit.days_count);
       printf("Completed days: %d\n", habit.stats.completed_days);
@@ -288,6 +406,7 @@ main(int argc, char *argv[]) {
          }
       }
 
+      calc_stats(&habit);
       habit_file_write(&habit, "w");
    }
 
@@ -334,7 +453,7 @@ habit_file_read(Habit *habit) {
    int day = 0;
    int mark = 0;
    fscanf(habit_file, "%ld,%d,%d\n",
-          &habit->stats.creation_timestamp, 
+          &habit->stats.creation_timestamp,
           &habit->stats.completed_days,
           &habit->stats.failed_days);
    while (fscanf(habit_file, "%d,%d\n", &day, &mark) != EOF) {
@@ -362,11 +481,10 @@ habit_file_write(Habit *habit, char *mode) {
              habit->stats.completed_days,
              habit->stats.failed_days);
    if (habit->days_count != 0)
-      for (int i = 0; i < habit->days_count; i++) {
+      for (int i = 0; i < habit->days_count; i++)
          fprintf(habit_file, "%ld,%d\n", 
                  habit->days[i].timestamp, 
                  habit->days[i].marked);
-      }
 
    fclose(habit_file);
    return 0;
@@ -548,7 +666,7 @@ habitpath(int trailing_slash) {
       path = malloc(strlen(envpath) + sizeof(char) * 1);
       strcpy(path, envpath);
    }
-   if (trailing_slash) { 
+   if (trailing_slash) {
       path = realloc(path, strlen(path) + sizeof(char));
       strcat(path, "/");
    }
@@ -572,6 +690,8 @@ switch_day_mark(Day *day) {
 
 void
 calc_stats(Habit *habit) {
+   habit->stats.completed_days = 0;
+   habit->stats.failed_days = 0;
    for (int i = 0; i < habit->days_count; i++) {
       if (habit->days[i].marked == DAY_COMPLETE)
          habit->stats.completed_days++;
@@ -594,4 +714,13 @@ day_mark_str(int day_mark) {
       } break;
       default: return NULL;
    }
+}
+
+int
+habit_exists(Habit *habit) {
+   char *filename = habit_make_filename(habit);
+   struct stat st = {0};
+   if (stat(filename, &st) == -1) {
+      return 1;
+   } else return 0;
 }
