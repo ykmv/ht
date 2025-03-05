@@ -351,28 +351,6 @@ main(int argc, char *argv[]) {
          free(months);
       }
 
-
-      /*int a[7][*/
-
-      /*for (int i = 0; i < habit.days_count; i++) {*/
-      /*   struct tm *timeinfo = localtime(&habit.days[i].timestamp);*/
-      /*   printf("day: %d.%02d.%02d ",*/
-      /*          timeinfo->tm_year + 1900,*/
-      /*          timeinfo->tm_mon + 1,*/
-      /*          timeinfo->tm_mday);*/
-      /*   switch(habit.days[i].marked) {*/
-      /*      case DAY_UNMARKED: {*/
-      /*         printf("unmarked\n"); */
-      /*      } break;*/
-      /*      case DAY_COMPLETE: {*/
-      /*         printf("DONE\n"); */
-      /*      } break;*/
-      /*      case DAY_FAILED: {*/
-      /*         printf("fail\n"); */
-      /*      } break;*/
-      /*   }*/
-      /*}*/
-
       if (habit.stats.completed_days == 0
          && habit.stats.failed_days == 0)
             calc_stats(&habit);
@@ -614,7 +592,6 @@ default_habit_path_make() {
 
 int
 default_habit_write(Habit *habit) {
-   // TODO: add error checking
    FILE *default_file = fopen(default_habit_path_make(), "w");
    if (default_file == NULL) return 1;
    fprintf(default_file, "%s\n", habit->name);
