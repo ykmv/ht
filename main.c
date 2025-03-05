@@ -11,6 +11,7 @@
 // TODO: delete days
 // TODO: GitHub-like calender of habits
 // TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
+//       by the means of env variable
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
 
@@ -29,6 +30,8 @@ extern int errno;
 #define ANSI_RESET "\e[0m"
 #define GRAPH_BLANK_EVEN 2
 #define GRAPH_BLANK_ODD 3
+#define GRAPH_XMAX 7
+#define GRAPH_YMAX 52
 
 
 #define DAY_UNMARKED 0
@@ -66,19 +69,6 @@ const char *habit_add_day_arg = "-d";
 const char *habit_non_default_arg = "-H";
 const char *print_help_arg = "-h";
 
-const char *graph_jan = "Jan";
-const char *graph_feb = "Feb";
-const char *graph_mar = "Mar";
-const char *graph_apr = "Apr";
-const char *graph_may = "May";
-const char *graph_jun = "Jun";
-const char *graph_jul = "Jul";
-const char *graph_aug = "Aug";
-const char *graph_sep = "Sep";
-const char *graph_oct = "Oct";
-const char *graph_nov = "Nov";
-const char *graph_dec = "Dec";
-
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
 int habit_file_read(Habit *habit);
@@ -97,7 +87,6 @@ char *default_habit_path_make();
 void switch_day_mark(Day *day);
 void calc_stats(Habit *habit);
 char *day_mark_str(int day_mark);
-int habit_exists(Habit *habit);
 
 int
 main(int argc, char *argv[]) {
@@ -162,7 +151,7 @@ main(int argc, char *argv[]) {
    } else if (!strcmp(argv[1], habit_remove_arg)) {
       if (argc >= 3) {
          habit.name = argv[2];
-         if (habit_exists(&habit)) {
+         if (habit_file_read(&habit)) {
             fprintf(stderr, "%s does not exist\n", habit.name);
             return 1;
          }
@@ -241,21 +230,31 @@ main(int argc, char *argv[]) {
          return 1;
       }
 
-      habit_file_read(&habit);
+      if (habit_file_read(&habit)) {
+         fprintf(stderr, "This habit doesn't exist\n");
+         return 1;
+      }
       printf("Habit name: %s\n", habit.name);
       if (habit.days_count != 0) {
-         int graph[7][52] = {0};
+         int graph[GRAPH_XMAX][GRAPH_YMAX] = {0};
+
          time_t t = time(NULL);
          struct tm *ti = localtime(&t);
-         int offset = (ti->tm_wday == 0) ?
-            7 : ti->tm_wday;
+         int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
          offset++;
 
          int last_column = 40;
          int pattern = 0;
-         for (int y = 51; y >= 0; y--) {
-            for (int x = 6; x >= 0; x--) {
-               if (y == 51 && offset != 0) {
+         typedef struct {
+            int i;
+            const char *name;
+         } Month;
+         Month *months;
+         int months_count = 0;
+
+         for (int y = GRAPH_YMAX-1; y >= 0; y--) {
+            for (int x = GRAPH_XMAX-1; x >= 0; x--) {
+               if (y == GRAPH_YMAX-1 && offset != 0) {
                   offset--;
                   continue;
                } else {
@@ -268,6 +267,32 @@ main(int argc, char *argv[]) {
                   } else if (pattern % 2 == 1) {
                      graph[x][y] = GRAPH_BLANK_ODD;
                   }
+
+                  ti = localtime(&t);
+                  if (ti->tm_mday == 1) {
+                     if (months_count == 0) {
+                        months_count = 1;
+                        months = malloc(sizeof(Month) * months_count);
+                     } else {
+                        months_count++;
+                        months = realloc(months, sizeof(Month) * months_count);
+                     }
+                     switch (ti->tm_mon) {
+                        case  0: months[months_count-1].name = "Jan"; break;
+                        case  1: months[months_count-1].name = "Feb"; break;
+                        case  2: months[months_count-1].name = "Mar"; break;
+                        case  3: months[months_count-1].name = "Apr"; break;
+                        case  4: months[months_count-1].name = "May"; break;
+                        case  5: months[months_count-1].name = "Jun"; break;
+                        case  6: months[months_count-1].name = "Jul"; break;
+                        case  7: months[months_count-1].name = "Aug"; break;
+                        case  8: months[months_count-1].name = "Sep"; break;
+                        case  9: months[months_count-1].name = "Oct"; break;
+                        case 10: months[months_count-1].name = "Nov"; break;
+                        case 11: months[months_count-1].name = "Dec"; break;
+                     }
+                     months[months_count-1].i = y;
+                  }
                   t -= 86400;
                   pattern++;
                }
@@ -279,7 +304,23 @@ main(int argc, char *argv[]) {
             }
          }
 
-         for (int x = 0; x < 7; x++) {
+         const char* sep = "  ";
+         const char* half_sep = " ";
+         int i = months_count-1;
+         int nextishalf = 0;
+         printf("   ");
+         for (int y = last_column; y < GRAPH_YMAX; y++) {
+            if (months[i].i == y) {
+               printf("%s", months[i].name);
+               i--;
+               nextishalf = 1;
+            } else if (nextishalf == 1) {
+               printf("%s", half_sep);
+               nextishalf = 0;
+            } else printf("%s", sep);
+         }
+         printf("\n");
+         for (int x = 0; x < GRAPH_XMAX; x++) {
             switch (x) {
                case 0: printf("Mon"); break;
                case 2: printf("Wed"); break;
@@ -287,7 +328,7 @@ main(int argc, char *argv[]) {
                case 6: printf("Sun"); break;
                default: printf("   ");
             }
-            for (int y = last_column; y < 52; y++) {
+            for (int y = last_column; y < GRAPH_YMAX; y++) {
                switch(graph[x][y]) {
                   case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
                   case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
@@ -307,7 +348,9 @@ main(int argc, char *argv[]) {
             }
             printf("\n");
          }
+         free(months);
       }
+
 
       /*int a[7][*/
 
@@ -446,7 +489,6 @@ habit_file_read(Habit *habit) {
    char *filename = habit_make_filename(habit);
    FILE *habit_file = fopen(filename, "r");
    if (habit_file == NULL) {
-      fprintf(stderr, "file not found\n");
       return 1;
    }
 
@@ -714,13 +756,4 @@ day_mark_str(int day_mark) {
       } break;
       default: return NULL;
    }
-}
-
-int
-habit_exists(Habit *habit) {
-   char *filename = habit_make_filename(habit);
-   struct stat st = {0};
-   if (stat(filename, &st) == -1) {
-      return 1;
-   } else return 0;
 }
