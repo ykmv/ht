@@ -2,12 +2,13 @@
 A simple CLI habit tracker written in C. 
 
 (The project is still in development)
+
 ```
  === ht - CLI Habit Tracker === 
 ht -h : print this message
 ht -a <name> : add new habit
-!TBD! ht -r <name> : remove habit
-!TBD! ht -l        : list habits
+ht -r <name> : remove habit
+ht -l        : list habits
 ht -s <name> : select habit as a default one
 ht -s : unmark habit as default one (if it it was selected beforehand
 ht : mark default habit as completed for today
