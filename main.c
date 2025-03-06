@@ -254,7 +254,7 @@ main(int argc, char *argv[]) {
          // TODO: the graph display breaks if a day has been set too long (aka a year) ago
          for (int y = GRAPH_YMAX-1; y >= 0; y--) {
             for (int x = GRAPH_XMAX-1; x >= 0; x--) {
-               if (y == GRAPH_YMAX-1 && offset != 0) {
+               if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
                   offset--;
                   continue;
                } else {
@@ -333,9 +333,9 @@ main(int argc, char *argv[]) {
                   case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
                   case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
                   case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
-                  case GRAPH_BLANK_ODD: 
+                  case GRAPH_BLANK_ODD:
                      printf(ANSI_BGIBLK "  " ANSI_RESET); break;
-                  case GRAPH_BLANK_EVEN: 
+                  case GRAPH_BLANK_EVEN:
                      printf(ANSI_BGGRY "  " ANSI_RESET); break;
                }
             }
