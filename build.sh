@@ -1,3 +1,9 @@
 #!/bin/sh
 
-gcc -g main.c -o ht
+DEBUG=
+if [ "$1" = "-r" ]; then
+	DEBUG=
+else
+	DEBUG=-g
+fi
+gcc $DEBUG main.c -o ht

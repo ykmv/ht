@@ -240,7 +240,7 @@ main(int argc, char *argv[]) {
          time_t t = time(NULL);
          struct tm *ti = localtime(&t);
          int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
-         offset++;
+         offset = 7 - offset;
 
          int last_column = 40;
          int pattern = 0;
@@ -251,6 +251,7 @@ main(int argc, char *argv[]) {
          Month *months;
          int months_count = 0;
 
+         // TODO: the graph display breaks if a day has been set too long (aka a year) ago
          for (int y = GRAPH_YMAX-1; y >= 0; y--) {
             for (int x = GRAPH_XMAX-1; x >= 0; x--) {
                if (y == GRAPH_YMAX-1 && offset != 0) {
@@ -296,11 +297,11 @@ main(int argc, char *argv[]) {
                   pattern++;
                }
             }
-            if (date_compare(t, habit.days[0].timestamp) == -1 
+            if (date_compare(t, habit.days[0].timestamp) == -1
                 && y <= last_column) {
                last_column = y;
                break;
-            }
+            } 
          }
 
          const char* sep = "  ";
