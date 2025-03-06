@@ -1,9 +1,18 @@
 #!/bin/sh
 
+COMPILER=gcc
 DEBUG=
+
+which tcc 2>/dev/null >/dev/null
+if [ $? = "0" ]; then
+	COMPILER=tcc
+fi
+
 if [ "$1" = "-r" ]; then
 	DEBUG=
 else
 	DEBUG=-g
 fi
-gcc $DEBUG main.c -o ht
+
+set -xe
+$COMPILER $DEBUG main.c -o ht

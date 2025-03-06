@@ -13,6 +13,7 @@
 //       by the means of env variable
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
+// TODO: Add a check for ANSI colours support
 
 // A Habit Tracker
 //
@@ -21,7 +22,10 @@
 //   Day,Marked
 
 extern int errno;
-
+#define ANSI_BLK "\e[0;30m"
+#define ANSI_RED "\e[0;31m"
+#define ANSI_GRN "\e[0;32m"
+#define ANSI_YEL "\e[0;33m"
 #define ANSI_BGRED "\e[41m"
 #define ANSI_BGGRN "\e[42m"
 #define ANSI_BGIBLK "\e[0;100m"
@@ -31,7 +35,6 @@ extern int errno;
 #define GRAPH_BLANK_ODD 3
 #define GRAPH_XMAX 7
 #define GRAPH_YMAX 52
-
 
 #define DAY_UNMARKED 0
 #define DAY_COMPLETE 1
@@ -64,6 +67,7 @@ const char *habit_list_arg = "-l";
 const char *habit_select_default_arg = "-s";
 const char *habit_folder_select_arg = "-f";
 const char *habit_display_arg = "-c";
+const char *habit_display_as_list_arg = "-cl";
 const char *habit_add_day_arg = "-d";
 const char *habit_non_default_arg = "-H";
 const char *print_help_arg = "-h";
@@ -196,27 +200,32 @@ main(int argc, char *argv[]) {
          if (strcmp(de->d_name, "..") 
              && strcmp(de->d_name, ".")
              && strcmp(de->d_name, "default")) {
-            habit.name = calloc(strlen(de->d_name)-3, sizeof(char));
             habit.days_count = 0;
-            for (int i = 0; i < strlen(de->d_name)-4; i++) {
+            habit.name = calloc(strlen(de->d_name)-3, sizeof(char));
+            for (int i = 0; i < strlen(de->d_name)-4; i++)
                habit.name[i] = de->d_name[i];
-            }
             habit.name[strlen(de->d_name)] = '\0';
             habit_file_read(&habit);
-            struct tm *ti = localtime(&habit.stats.creation_timestamp);
             printf("%s", habit.name);
             if (habit.days_count > 0) {
-               printf(" (TODAY: %s)\n", day_mark_str(habit.days[habit.days_count-1].marked));
-               printf("   Days completed: %d; failed: %d; created %d.%02d.%02d\n", 
-                      habit.stats.completed_days,
-                      habit.stats.failed_days,
-                      ti->tm_year + 1900,
-                      ti->tm_mon + 1,
-                      ti->tm_mday);
-            }
-            else printf("\n");
+               if (!date_compare(habit.days[habit.days_count-1].timestamp, time(NULL)))
+                  printf(" (TODAY: %s)", 
+                         day_mark_str(habit.days[habit.days_count-1].marked));
+               printf("\n");
+               printf("   Days "
+                      ANSI_GRN "completed: %d; "
+                      ANSI_RED "failed: %d; ",
+                         habit.stats.completed_days,
+                         habit.stats.failed_days);
+            } else printf("\n   ");
+            struct tm *ti = localtime(&habit.stats.creation_timestamp);
+            printf(ANSI_RESET "created %d.%02d.%02d\n", 
+                   ti->tm_year + 1900,
+                   ti->tm_mon + 1,
+                   ti->tm_mday);
          }
-   } else if (!strcmp(argv[1], habit_display_arg)) {
+   } else if (!strcmp(argv[1], habit_display_arg) 
+      || !strcmp(argv[1], habit_display_as_list_arg)) {
       if (argc == 2) habit.name = default_habit_read();
       else habit.name = argv[2];
 
@@ -233,132 +242,156 @@ main(int argc, char *argv[]) {
          fprintf(stderr, "This habit doesn't exist\n");
          return 1;
       }
-      printf("Habit name: %s\n", habit.name);
+      printf("Habit:" ANSI_YEL " %s\n" ANSI_RESET, habit.name);
       if (habit.days_count != 0) {
-         int graph[GRAPH_XMAX][GRAPH_YMAX] = {0};
-
-         time_t t = time(NULL);
-         struct tm *ti = localtime(&t);
-         int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
-         offset = 7 - offset;
-
-         int last_column = 40;
-         int pattern = 0;
-         typedef struct {
-            int i;
-            const char *name;
-         } Month;
-         Month *months;
-         int months_count = 0;
-
-         // TODO: the graph display breaks if a day has been set too long (aka a year) ago
-         for (int y = GRAPH_YMAX-1; y >= 0; y--) {
-            for (int x = GRAPH_XMAX-1; x >= 0; x--) {
-               if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
-                  offset--;
-                  continue;
-               } else {
-                  Day *day = day_exists(&habit, t);
-                  if (day) {
-                     if (day->marked == DAY_COMPLETE || day->marked == DAY_FAILED)
-                        graph[x][y] = day->marked;
-                  } else if (pattern % 2 == 0) {
-                     graph[x][y] = GRAPH_BLANK_EVEN;
-                  } else if (pattern % 2 == 1) {
-                     graph[x][y] = GRAPH_BLANK_ODD;
-                  }
-
-                  ti = localtime(&t);
-                  if (ti->tm_mday == 1) {
-                     if (months_count == 0) {
-                        months_count = 1;
-                        months = malloc(sizeof(Month) * months_count);
-                     } else {
-                        months_count++;
-                        months = realloc(months, sizeof(Month) * months_count);
-                     }
-                     switch (ti->tm_mon) {
-                        case  0: months[months_count-1].name = "Jan"; break;
-                        case  1: months[months_count-1].name = "Feb"; break;
-                        case  2: months[months_count-1].name = "Mar"; break;
-                        case  3: months[months_count-1].name = "Apr"; break;
-                        case  4: months[months_count-1].name = "May"; break;
-                        case  5: months[months_count-1].name = "Jun"; break;
-                        case  6: months[months_count-1].name = "Jul"; break;
-                        case  7: months[months_count-1].name = "Aug"; break;
-                        case  8: months[months_count-1].name = "Sep"; break;
-                        case  9: months[months_count-1].name = "Oct"; break;
-                        case 10: months[months_count-1].name = "Nov"; break;
-                        case 11: months[months_count-1].name = "Dec"; break;
-                     }
-                     months[months_count-1].i = y;
-                  }
-                  t -= 86400;
-                  pattern++;
+         if (!strcmp(argv[1], habit_display_as_list_arg)) {
+            for (int i = 0; i < habit.days_count; i++) {
+               struct tm *timeinfo = localtime(&habit.days[i].timestamp);
+               switch(habit.days[i].marked) {
+                  case DAY_COMPLETE: {
+                     printf(ANSI_GRN); 
+                  } break;
+                  case DAY_FAILED: {
+                     printf(ANSI_RED); 
+                  } break;
+                  case DAY_UNMARKED: {
+                     printf(ANSI_BLK); 
+                  } break;
                }
+               printf("day: %d.%02d.%02d %s" ANSI_RESET "\n",
+                  timeinfo->tm_year + 1900,
+                  timeinfo->tm_mon + 1,
+                  timeinfo->tm_mday,
+                  day_mark_str(habit.days[i].marked));
             }
-            if (date_compare(t, habit.days[0].timestamp) == -1
-                && y <= last_column) {
-               last_column = y;
-               break;
-            } 
-         }
+         } else {
+            int graph[GRAPH_XMAX][GRAPH_YMAX] = {0};
 
-         const char* sep = "  ";
-         const char* half_sep = " ";
-         int i = months_count-1;
-         int nextishalf = 0;
-         printf("   ");
-         for (int y = last_column; y < GRAPH_YMAX; y++) {
-            if (months[i].i == y) {
-               printf("%s", months[i].name);
-               i--;
-               nextishalf = 1;
-            } else if (nextishalf == 1) {
-               printf("%s", half_sep);
-               nextishalf = 0;
-            } else printf("%s", sep);
-         }
-         printf("\n");
-         for (int x = 0; x < GRAPH_XMAX; x++) {
-            switch (x) {
-               case 0: printf("Mon"); break;
-               case 2: printf("Wed"); break;
-               case 4: printf("Fri"); break;
-               case 6: printf("Sun"); break;
-               default: printf("   ");
+            time_t t = time(NULL);
+            struct tm *ti = localtime(&t);
+            int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
+            offset = 7 - offset;
+
+            int last_column = 40;
+            int pattern = 0;
+            typedef struct {
+               int i;
+               const char *name;
+            } Month;
+            Month *months;
+            int months_count = 0;
+
+            // TODO: the graph display breaks 
+            // if a day has been set too long (aka a year) ago
+            for (int y = GRAPH_YMAX-1; y >= 0; y--) {
+               for (int x = GRAPH_XMAX-1; x >= 0; x--) {
+                  if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
+                     offset--;
+                     continue;
+                  } else {
+                     Day *day = day_exists(&habit, t);
+                     if (day) {
+                        if (day->marked == DAY_COMPLETE 
+                           || day->marked == DAY_FAILED)
+                           graph[x][y] = day->marked;
+                     } else if (pattern % 2 == 0) {
+                        graph[x][y] = GRAPH_BLANK_EVEN;
+                     } else if (pattern % 2 == 1) {
+                        graph[x][y] = GRAPH_BLANK_ODD;
+                     }
+
+                     ti = localtime(&t);
+                     if (ti->tm_mday == 1) {
+                        if (months_count == 0) {
+                           months_count = 1;
+                           months = malloc(sizeof(Month) * months_count);
+                        } else {
+                           months_count++;
+                           months = realloc(months, sizeof(Month) * months_count);
+                        }
+                        switch (ti->tm_mon) {
+                           case  0: months[months_count-1].name = "Jan"; break;
+                           case  1: months[months_count-1].name = "Feb"; break;
+                           case  2: months[months_count-1].name = "Mar"; break;
+                           case  3: months[months_count-1].name = "Apr"; break;
+                           case  4: months[months_count-1].name = "May"; break;
+                           case  5: months[months_count-1].name = "Jun"; break;
+                           case  6: months[months_count-1].name = "Jul"; break;
+                           case  7: months[months_count-1].name = "Aug"; break;
+                           case  8: months[months_count-1].name = "Sep"; break;
+                           case  9: months[months_count-1].name = "Oct"; break;
+                           case 10: months[months_count-1].name = "Nov"; break;
+                           case 11: months[months_count-1].name = "Dec"; break;
+                        }
+                        months[months_count-1].i = y;
+                     }
+                     t -= 86400;
+                     pattern++;
+                  }
+               }
+               if (date_compare(t, habit.days[0].timestamp) == -1
+                   && y <= last_column) {
+                  last_column = y;
+                  break;
+               } 
             }
+
+            const char* sep = "  ";
+            const char* half_sep = " ";
+            int i = months_count-1;
+            int nextishalf = 0;
+            printf("   ");
             for (int y = last_column; y < GRAPH_YMAX; y++) {
-               switch(graph[x][y]) {
-                  case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
-                  case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
-                  case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
-                  case GRAPH_BLANK_ODD:
-                     printf(ANSI_BGIBLK "  " ANSI_RESET); break;
-                  case GRAPH_BLANK_EVEN:
-                     printf(ANSI_BGGRY "  " ANSI_RESET); break;
-               }
-            }
-            switch (x) {
-               case 0: printf("Mon"); break;
-               case 2: printf("Wed"); break;
-               case 4: printf("Fri"); break;
-               case 6: printf("Sun"); break;
-               default: printf("   ");
+               if (months[i].i == y) {
+                  printf("%s", months[i].name);
+                  i--;
+                  nextishalf = 1;
+               } else if (nextishalf == 1) {
+                  printf("%s", half_sep);
+                  nextishalf = 0;
+               } else printf("%s", sep);
             }
             printf("\n");
+            for (int x = 0; x < GRAPH_XMAX; x++) {
+               switch (x) {
+                  case 0: printf("Mon"); break;
+                  case 2: printf("Wed"); break;
+                  case 4: printf("Fri"); break;
+                  case 6: printf("Sun"); break;
+                  default: printf("   ");
+               }
+               for (int y = last_column; y < GRAPH_YMAX; y++) {
+                  switch(graph[x][y]) {
+                     case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
+                     case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
+                     case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
+                     case GRAPH_BLANK_ODD:
+                        printf(ANSI_BGIBLK "  " ANSI_RESET); break;
+                     case GRAPH_BLANK_EVEN:
+                        printf(ANSI_BGGRY "  " ANSI_RESET); break;
+                  }
+               }
+               switch (x) {
+                  case 0: printf("Mon"); break;
+                  case 2: printf("Wed"); break;
+                  case 4: printf("Fri"); break;
+                  case 6: printf("Sun"); break;
+                  default: printf("   ");
+               }
+               printf("\n");
+            }
+            free(months);
          }
-         free(months);
       }
-
       if (habit.stats.completed_days == 0
          && habit.stats.failed_days == 0)
             calc_stats(&habit);
-      printf("Total days: %d\n", habit.days_count);
-      printf("Completed days: %d\n", habit.stats.completed_days);
-      printf("Failed days: %d\n", habit.stats.failed_days);
+      printf("Days total: %d;" ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n", 
+             habit.days_count,
+             habit.stats.completed_days,
+             habit.stats.failed_days);
       struct tm *ti = localtime(&habit.stats.creation_timestamp);
-      printf("Creation date: %d.%02d.%02d\n", 
+      printf(ANSI_RESET "Created at: %d.%02d.%02d\n", 
              ti->tm_year + 1900,
              ti->tm_mon + 1,
              ti->tm_mday);
@@ -643,7 +676,7 @@ print_help() {
    printf("ht -r <name> : remove habit\n");
    printf("ht -l        : list habits\n");
    printf("ht -s <name> : select habit as a default one\n");
-   printf("ht -s : unmark habit as default one (if it it was selected beforehand\n");
+   printf("ht -s : unmark habit as default one (if it it was selected beforehand)\n");
    printf("ht : mark default habit as completed for today\n");
    printf("     (running this once again will unmark the habit)\n");
    printf("ht <YYYY.MM.DD> : mark default habit as completed for any day before today\n");
@@ -652,6 +685,8 @@ print_help() {
    printf("ht -H <habit> <YYYY.MM.DD> : mark any day of the habit\n");
    printf("ht -c : display calender with a default habit\n");
    printf("ht -c <habit> : display calender with a selected habit\n");
+   printf("ht -cl : display list of days of a default habit\n");
+   printf("ht -cl <habit> : display list of days of a selected habit\n");
    printf("\nUse $%s to select habit path\n", habit_folder_path_env_var);
    printf("This help message is displayed when no default habit was selected\n");
 }
