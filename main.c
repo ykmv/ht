@@ -8,12 +8,14 @@
 
 // TODO: add multiple days in one command
 // TODO: improve cli handling
-// TODO: delete days
+// TODO: delete days 
+//       when a day gets "unmarked", it should be deleted from a file
 // TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
 //       by the means of env variable
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
 // TODO: Add a check for ANSI colours support
+// TODO: in -c[l] and -l arguments point out which habit is default
 
 // A Habit Tracker
 //
@@ -22,6 +24,7 @@
 //   Day,Marked
 
 extern int errno;
+
 #define ANSI_BLK "\e[0;30m"
 #define ANSI_RED "\e[0;31m"
 #define ANSI_GRN "\e[0;32m"
@@ -108,7 +111,8 @@ main(int argc, char *argv[]) {
    char *habit_path_tr = habitpath(1);
    Habit habit = {0};
    if (argc <= 1) {
-      FILE *default_file = fopen(default_habit_path_make(), "r");
+      char *default_path = default_habit_path_make();
+      FILE *default_file = fopen(default_path, "r");
       if (default_file == NULL) {
          print_help();
          return 0;
@@ -135,6 +139,8 @@ main(int argc, char *argv[]) {
 
       calc_stats(&habit);
       habit_file_write(&habit, "w");
+      free(habit.name);
+      free(default_path);
    } else if (!strcmp(argv[1], print_help_arg)) {
       print_help();
    } else if (!strcmp(argv[1], habit_create_arg)) {
@@ -223,6 +229,7 @@ main(int argc, char *argv[]) {
                    ti->tm_year + 1900,
                    ti->tm_mon + 1,
                    ti->tm_mday);
+            free(habit.name);
          }
    } else if (!strcmp(argv[1], habit_display_arg) 
       || !strcmp(argv[1], habit_display_as_list_arg)) {
@@ -395,6 +402,8 @@ main(int argc, char *argv[]) {
              ti->tm_year + 1900,
              ti->tm_mon + 1,
              ti->tm_mday);
+      free(habit.name);
+
    } else {
       // TODO: maybe add some sort of way to check if this piece of code
       // has actually successfully worked out
@@ -514,6 +523,7 @@ habit_file_read(Habit *habit) {
    }
 
    fclose(habit_file);
+   free(filename);
    return 0;
 }
 
@@ -540,6 +550,7 @@ habit_file_write(Habit *habit, char *mode) {
                  habit->days[i].marked);
 
    fclose(habit_file);
+   free(filename);
    return 0;
 }
 
@@ -620,12 +631,14 @@ default_habit_path_make() {
                        + sizeof(char));
    strcpy(path, habit_path);
    strcat(path, default_habit_filename);
+   free(habit_path);
    return path;
 }
 
 int
 default_habit_write(Habit *habit) {
-   FILE *default_file = fopen(default_habit_path_make(), "w");
+   char *default_path = default_habit_path_make();
+   FILE *default_file = fopen(default_path, "w");
    if (default_file == NULL) return 1;
    fprintf(default_file, "%s\n", habit->name);
    fclose(default_file);
@@ -634,7 +647,8 @@ default_habit_write(Habit *habit) {
 
 char*
 default_habit_read() {
-   FILE *default_file = fopen(default_habit_path_make(), "r");
+   char *default_path = default_habit_path_make();
+   FILE *default_file = fopen(default_path, "r");
    if (default_file == NULL) return NULL;
 
    char buffer[256];
@@ -648,6 +662,7 @@ default_habit_read() {
 
 
    fclose(default_file);
+   free(default_path);
    return name;
 }
 
