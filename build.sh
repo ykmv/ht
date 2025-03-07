@@ -11,6 +11,7 @@ fi
 if [ "$1" = "-r" ]; then
 	DEBUG=
 else
+	COMPILER=gcc
 	DEBUG=-g
 fi
 

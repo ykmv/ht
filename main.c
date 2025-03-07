@@ -110,6 +110,7 @@ main(int argc, char *argv[]) {
 
    char *habit_path_tr = habitpath(1);
    Habit habit = {0};
+   habit.name = "";
    if (argc <= 1) {
       char *default_path = default_habit_path_make();
       FILE *default_file = fopen(default_path, "r");
@@ -351,7 +352,7 @@ main(int argc, char *argv[]) {
             for (int y = last_column; y < GRAPH_YMAX; y++) {
                if (months[i].i == y) {
                   printf("%s", months[i].name);
-                  i--;
+                  if (i != 0) i--;
                   nextishalf = 1;
                } else if (nextishalf == 1) {
                   printf("%s", half_sep);
@@ -642,6 +643,7 @@ default_habit_write(Habit *habit) {
    if (default_file == NULL) return 1;
    fprintf(default_file, "%s\n", habit->name);
    fclose(default_file);
+   free(default_path);
    return 0;
 }
 
@@ -658,7 +660,7 @@ default_habit_read() {
    for (int i = 0; i < strlen(buffer) - 1; i++) {
          name[i] = buffer[i]; 
    }
-   name[strlen(buffer)] = '\0';
+   name[strlen(buffer)-1] = '\0';
 
 
    fclose(default_file);
@@ -721,7 +723,6 @@ day_exists(Habit *habit, time_t time) {
    return NULL;
 }
 
-// TODO: this is never free()ed in this code. shameful.
 char*
 habitpath(int trailing_slash) {
    char *path;
@@ -736,7 +737,7 @@ habitpath(int trailing_slash) {
       strcpy(path, envpath);
    }
    if (trailing_slash) {
-      path = realloc(path, strlen(path) + sizeof(char));
+      path = realloc(path, strlen(path) + sizeof(char) * 2);
       strcat(path, "/");
    }
    return path;
