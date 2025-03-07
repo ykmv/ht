@@ -8,9 +8,15 @@ if [ $? = "0" ]; then
 	COMPILER=tcc
 fi
 
+if [ "$1" = "-i" ]; then
+	set -xe
+	cp ht ~/.local/bin
+	exit;
+fi
+
 if [ "$1" = "-r" ]; then
 	DEBUG=
-else
+else 
 	COMPILER=gcc
 	DEBUG=-g
 fi

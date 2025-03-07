@@ -6,16 +6,11 @@
 #include <errno.h>
 #include <dirent.h>
 
-// TODO: add multiple days in one command
-// TODO: improve cli handling
-// TODO: delete days 
-//       when a day gets "unmarked", it should be deleted from a file
 // TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
 //       by the means of env variable
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
 // TODO: Add a check for ANSI colours support
-// TODO: in -c[l] and -l arguments point out which habit is default
 
 // A Habit Tracker
 //
@@ -63,6 +58,7 @@ typedef struct {
 const char *default_habit_filename = "default";
 const char *habit_folder_path_env_var = "HTDIR";
 const char *default_habit_path = "/.local/share/ht";
+const char *date_format_env_var = "HTFORMAT";
 
 const char *habit_create_arg = "-a";
 const char *habit_remove_arg = "-r";
@@ -203,8 +199,8 @@ main(int argc, char *argv[]) {
       if (dr == NULL) {
          perror("ERROR");
       }
-      while ((de = readdir(dr)) != NULL) 
-         if (strcmp(de->d_name, "..") 
+      while ((de = readdir(dr)) != NULL)
+         if (strcmp(de->d_name, "..")
              && strcmp(de->d_name, ".")
              && strcmp(de->d_name, "default")) {
             habit.days_count = 0;
@@ -234,7 +230,11 @@ main(int argc, char *argv[]) {
          }
    } else if (!strcmp(argv[1], habit_display_arg) 
       || !strcmp(argv[1], habit_display_as_list_arg)) {
-      if (argc == 2) habit.name = default_habit_read();
+      int is_default = 0;
+      if (argc == 2) {
+         is_default = 1;
+         habit.name = default_habit_read();
+      }
       else habit.name = argv[2];
 
       if (habit.name == NULL && argc == 2) {
@@ -250,7 +250,9 @@ main(int argc, char *argv[]) {
          fprintf(stderr, "This habit doesn't exist\n");
          return 1;
       }
-      printf("Habit:" ANSI_YEL " %s\n" ANSI_RESET, habit.name);
+      printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit.name);
+      if (is_default) printf(" (default)");
+      printf("\n");
       if (habit.days_count != 0) {
          if (!strcmp(argv[1], habit_display_as_list_arg)) {
             for (int i = 0; i < habit.days_count; i++) {
@@ -403,14 +405,15 @@ main(int argc, char *argv[]) {
              ti->tm_year + 1900,
              ti->tm_mon + 1,
              ti->tm_mday);
-      free(habit.name);
-
-   } else {
+      if (is_default) free(habit.name);
+   } else if (!strcmp(argv[1], habit_non_default_arg) || argv[1][0] != '-') {
       // TODO: maybe add some sort of way to check if this piece of code
       // has actually successfully worked out
       time_t new_day_timestamp;
       char *day_arg = NULL;
       int year, month, day;
+      time_t time_now = time(NULL);
+      struct tm *now = localtime(&time_now);
 
       if (!strcmp(argv[1], habit_non_default_arg)) {
          if (argc > 2)
@@ -425,8 +428,22 @@ main(int argc, char *argv[]) {
          day_arg = argv[1];
       }
       if (day_arg != NULL) {
-         sscanf(day_arg, "%d.%d.%d", &year,&month,&day);
-         new_day_timestamp = ymd_to_time_t(year, month, day);
+         if (sscanf(day_arg, "%d.%d.%d", &year,&month,&day) == 3
+             && year > 1
+             && month >= 1 && month <= 12
+             && day >= 1 && day <= 31) {
+            new_day_timestamp = ymd_to_time_t(year, month, day);
+         } else if (sscanf(day_arg, "%d.%d", &month, &day) == 2
+                    && month >= 1 && month <= 12
+                    && day >= 1 && day <= 31) {
+            new_day_timestamp = ymd_to_time_t(now->tm_year+1900, month, day);
+         } else if (sscanf(day_arg, "%d", &day) == 1 && day >= 1 && day <= 31) {
+            new_day_timestamp = ymd_to_time_t(
+               now->tm_year+1900, now->tm_mon + 1, day);
+         } else {
+            fprintf(stderr, "The provided date \"%s\" cannot be parsed\n", day_arg);
+            return 1;
+         }
       } else new_day_timestamp = time(NULL);
 
       habit_file_read(&habit);
@@ -460,7 +477,9 @@ main(int argc, char *argv[]) {
                   day_mark_str(DAY_COMPLETE));
             } else {
                printf("The provided date %d.%02d.%02d is bigger than today\n",
-                      year, month, day);
+                      ti->tm_year + 1900,
+                      ti->tm_mon + 1,
+                      ti->tm_mday);
                return 1;
             }
 
@@ -472,6 +491,8 @@ main(int argc, char *argv[]) {
 
       calc_stats(&habit);
       habit_file_write(&habit, "w");
+   } else {
+      fprintf(stderr, "Wrong argument (use \"ht -h\" to get help for commands)\n");
    }
 
    free(habit.days);
@@ -546,9 +567,10 @@ habit_file_write(Habit *habit, char *mode) {
              habit->stats.failed_days);
    if (habit->days_count != 0)
       for (int i = 0; i < habit->days_count; i++)
-         fprintf(habit_file, "%ld,%d\n", 
-                 habit->days[i].timestamp, 
-                 habit->days[i].marked);
+         if (habit->days[i].marked != DAY_UNMARKED)
+            fprintf(habit_file, "%ld,%d\n", 
+                    habit->days[i].timestamp, 
+                    habit->days[i].marked);
 
    fclose(habit_file);
    free(filename);
@@ -780,7 +802,7 @@ day_mark_str(int day_mark) {
          return "fail";
       } break;
       case DAY_UNMARKED: {
-         return "unmarked";
+         return "deleted";
       } break;
       default: return NULL;
    }
