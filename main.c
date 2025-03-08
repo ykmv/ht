@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <dirent.h>
 
-// TODO: if the default habit was deleted, also deselect it from default
 // TODO: If there are no habits `ht -l` will segfault if `ht` was compiled
 //       with `tcc`.
 // TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
@@ -14,6 +13,7 @@
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
 // TODO: Add a check for ANSI colours support
+// TODO: add -y to the -c argument to allow to see a specific year
 
 // A Habit Tracker
 //
@@ -35,7 +35,7 @@ extern int errno;
 #define GRAPH_BLANK_EVEN 2
 #define GRAPH_BLANK_ODD 3
 #define GRAPH_XMAX 7
-#define GRAPH_YMAX 52
+#define GRAPH_YMAX 39
 
 #define DAY_UNMARKED 0
 #define DAY_COMPLETE 1
@@ -174,6 +174,12 @@ main(int argc, char *argv[]) {
          if (choice == 'y' || choice == 'Y') {
             remove(filename);
             printf("%s has been deleted successfully\n", habit.name);
+            char *default_habit_name = default_habit_read();
+            if (default_habit_name != NULL) {
+               char *default_habit_path = default_habit_path_make();
+               remove(default_habit_path);
+               printf("%s was default, default habit is no longer set\n", habit.name);
+            }
          }
       } else {
          fprintf(stderr, "No habit name was provided\n");
@@ -274,14 +280,38 @@ main(int argc, char *argv[]) {
    } else if (!strcmp(argv[1], habit_display_arg) 
       || !strcmp(argv[1], habit_display_as_list_arg)) {
       int is_default = 0;
+      int is_custom = 0;
+      int custom_width = 0;
+      int arg_offset = 0;
       if (argc == 2) {
          is_default = 1;
          habit.name = default_habit_read();
+      } else if (!strcmp(argv[2], "-w")) {
+         is_default = 1;
+         if (argc == 3) {
+            fprintf(stderr, "Please provide a width\n");
+            return 1;
+         } else {
+            is_custom = 1;
+            custom_width = atoi(argv[3]);
+         }
+         habit.name = default_habit_read();
+      } else {
+         if (argc >= 4) {
+            if (!strcmp(argv[3], "-w")) {
+               if (argc == 4) { 
+                  fprintf(stderr, "Please provide a width\n");
+               } else {
+                  is_custom = 1;
+                  custom_width = atoi(argv[4]);
+               }
+            }
+         }
+         habit.name = argv[2];
       }
-      else habit.name = argv[2];
 
       if (habit.name == NULL && argc == 2) {
-         fprintf(stderr, 
+         fprintf(stderr,
             "No default habit was selected and no other habit was provided\n");
          return 1;
       } else if (habit.name == NULL) {
@@ -320,34 +350,37 @@ main(int argc, char *argv[]) {
             }
          } else {
             int graph[GRAPH_XMAX][GRAPH_YMAX] = {0};
+            int last_column = 0;
+            int pattern = 0;
+            int graph_fillout = -1;
+            int dc = habit.days_count-1;
 
+            time_t now = time(NULL);
+            time_t graph_limit = now-86400*GRAPH_XMAX*GRAPH_YMAX;
             time_t t = time(NULL);
             struct tm *ti = localtime(&t);
             int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
             offset = 7 - offset;
 
-            int last_column = 40;
-            int pattern = 0;
             typedef struct {
                int i;
                const char *name;
             } Month;
-            Month *months;
+            Month *months = NULL;
             int months_count = 0;
 
-            // TODO: the graph display breaks 
-            // if a day has been set too long (aka a year) ago
             for (int y = GRAPH_YMAX-1; y >= 0; y--) {
                for (int x = GRAPH_XMAX-1; x >= 0; x--) {
                   if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
                      offset--;
                      continue;
                   } else {
-                     Day *day = day_exists(&habit, t);
-                     if (day) {
-                        if (day->marked == DAY_COMPLETE 
-                           || day->marked == DAY_FAILED)
-                           graph[x][y] = day->marked;
+                     if (date_compare(habit.days[dc].timestamp, t) == 0) {
+                        if (habit.days[dc].marked == DAY_COMPLETE 
+                           || habit.days[dc].marked == DAY_FAILED && dc >= 0) {
+                           graph[x][y] = habit.days[dc].marked;
+                           if (dc > 0) dc--;
+                        }
                      } else if (pattern % 2 == 0) {
                         graph[x][y] = GRAPH_BLANK_EVEN;
                      } else if (pattern % 2 == 1) {
@@ -383,27 +416,52 @@ main(int argc, char *argv[]) {
                      pattern++;
                   }
                }
-               if (date_compare(t, habit.days[0].timestamp) == -1
-                   && y <= last_column) {
+
+               if (!is_custom && dc >= 0) {
+                  if (date_compare(graph_limit, habit.days[dc].timestamp) == 1) {
+                     graph_fillout = 10;
+                     dc = -1;
+                  } else if (dc == 0) {
+                     graph_fillout = 10;
+                     dc = -1;
+                  }
+               }
+
+               if (graph_fillout > 0) {
+                  --graph_fillout;
                   last_column = y;
+               } else if (graph_fillout == 0) {
                   break;
-               } 
+               } else {
+                  if (is_custom)
+                     if (y <= GRAPH_YMAX-custom_width) {
+                        last_column = y;
+                        break;
+                     }
+               }
             }
 
             const char* sep = "  ";
             const char* half_sep = " ";
-            int i = months_count-1;
-            int nextishalf = 0;
-            printf("   ");
-            for (int y = last_column; y < GRAPH_YMAX; y++) {
-               if (months[i].i == y) {
-                  printf("%s", months[i].name);
-                  if (i != 0) i--;
-                  nextishalf = 1;
-               } else if (nextishalf == 1) {
-                  printf("%s", half_sep);
-                  nextishalf = 0;
-               } else printf("%s", sep);
+
+            int i = 0;
+            if (months_count > 0) {
+               i = months_count-1;
+               for (int k = 0; k < months_count; k++)
+                  if (months[i].i < last_column && i > 0)
+                     i--;
+               int nextishalf = 0;
+               printf("   ");
+               for (int y = last_column; y < GRAPH_YMAX; y++) {
+                  if (months[i].i == y) {
+                     printf("%s", months[i].name);
+                     if (i != 0) i--;
+                     nextishalf = 1;
+                  } else if (nextishalf == 1) {
+                     printf("%s", half_sep);
+                     nextishalf = 0;
+                  } else printf("%s", sep);
+               }
             }
             printf("\n");
             for (int x = 0; x < GRAPH_XMAX; x++) {
@@ -434,7 +492,7 @@ main(int argc, char *argv[]) {
                }
                printf("\n");
             }
-            free(months);
+            if (months != NULL) free(months);
          }
       }
       if (habit.stats.completed_days == 0
@@ -789,8 +847,9 @@ print_help() {
    printf("     (running this once again will unmark the habit)\n");
    printf("ht -H <habit> : mark any habit that isn't default\n");
    printf("ht -H <habit> <YYYY.MM.DD> : mark any day of the habit\n");
-   printf("ht -c : display calender with a default habit\n");
-   printf("ht -c <habit> : display calender with a selected habit\n");
+   printf("ht -c : display graph with a default habit\n");
+   printf("ht -c <habit> : display graph with a selected habit\n");
+   printf("      : custom width of the graph can be set with -w [1-39] argument\n");
    printf("ht -cl : display list of days of a default habit\n");
    printf("ht -cl <habit> : display list of days of a selected habit\n");
    printf("\nUse $%s to select habit path\n", habit_folder_path_env_var);
