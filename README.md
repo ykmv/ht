@@ -1,26 +1,51 @@
 # ht - CLI Habit Tracker
 A simple CLI habit tracker written in C. 
 
-(The project is still in development)
-```
- === ht - CLI Habit Tracker === 
-ht -h : print this message
-ht -a <name> : add new habit
-ht -r <name> : remove habit
-ht -l        : list habits
-ht -s <name> : select habit as a default one
-ht -s : unmark habit as default one (if it it was selected beforehand)
-ht : mark default habit as completed for today
-     (running this once again will unmark the habit)
-ht <YYYY.MM.DD> : mark default habit as completed for any day before today
-     (running this once again will unmark the habit)
-ht -H <habit> : mark any habit that isn't default
-ht -H <habit> <YYYY.MM.DD> : mark any day of the habit
-ht -c : display calender with a default habit
-ht -c <habit> : display calender with a selected habit
-ht -cl : display list of days of a default habit
-ht -cl <habit> : display list of days of a selected habit
+![htdemo](htdemo.gif)
 
-Use $HTDIR to select habit path
-This help message is displayed when no default habit was selected
+## How to compile and install `ht`
+```sh
+$ ./build.sh -r 
 ```
+Compile the program.
+
+```sh
+$ ./build.sh -i
+```
+Install the program at `~/.local/bin`
+
+
+## How to use `ht`
+
+```sh
+$ ht -a "the name of the habit" # Create a new habit
+```
+
+```sh
+$ ht -s "the name of the habit" # Select it as a default habit for a quick access.
+```
+
+```sh
+$ ht # Mark default habit as completed for today.
+     # Run this once again to mark today as failed.
+     # Run this once more will delete the day.
+```
+
+```sh
+$ ht -c # Look at the graph of the default habit. 
+        # It will show you failed and completed days
+$ ht -cl # Look at the list of completed and failed days of the default habit.
+```
+
+```sh
+$ ht -l # Display the list of all the habits
+```
+
+```sh
+$ ht -r "the name of the habit" # Remove the habit, 
+   # you will have to confirm your decision
+```
+
+The default path for storing habits is `~/.local/share/ht`. If you want to change it, use `$HTDIR` environment variable in your shell.
+
+This is the gist of using `ht`. There are some other arguments, if you wish to know them, use `ht -h`.
