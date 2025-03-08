@@ -286,6 +286,7 @@ main(int argc, char *argv[]) {
          return 1;
       }
 
+
       if (habit_file_read(&habit)) {
          fprintf(stderr, "This habit doesn't exist\n");
          return 1;
@@ -584,6 +585,7 @@ habit_file_read(Habit *habit) {
    if (!file_exists(filename)) {
       habit_file = fopen(filename, "r");
    } else {
+      free(filename);
       return 1;
    }
 
