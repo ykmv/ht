@@ -73,6 +73,7 @@ const char *habit_display_as_list_arg = "-cl";
 const char *habit_add_day_arg = "-d";
 const char *habit_non_default_arg = "-H";
 const char *print_help_arg = "-h";
+const char *version_arg = "-v";
 
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
@@ -92,6 +93,7 @@ void day_sort(Day arr[], int len);
 char *day_mark_str(int day_mark);
 void switch_day_mark(Day *day);
 void print_help();
+void print_version();
 int file_exists(char *filename);
 
 int
@@ -141,6 +143,8 @@ main(int argc, char *argv[]) {
       habit_file_write(&habit, "w");
       free(habit.name);
       free(default_path);
+   } else if (!strcmp(argv[1], version_arg)) {
+      print_version();
    } else if (!strcmp(argv[1], print_help_arg)) {
       print_help();
    } else if (!strcmp(argv[1], habit_create_arg)) {
@@ -932,4 +936,9 @@ day_mark_str(int day_mark) {
       } break;
       default: return NULL;
    }
+}
+
+void
+print_version() {
+   printf("ht: version 1.0.0\n");
 }
