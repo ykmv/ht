@@ -6,6 +6,9 @@
 #include <errno.h>
 #include <dirent.h>
 
+// TODO: if the default habit was deleted, also deselect it from default
+// TODO: If there are no habits `ht -l` will segfault if `ht` was compiled
+//       with `tcc`.
 // TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
 //       by the means of env variable
 // TODO: as of now, it is very difficult to select a habit 
