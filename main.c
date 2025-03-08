@@ -74,21 +74,22 @@ const char *print_help_arg = "-h";
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
 int habit_file_read(Habit *habit);
+char *habitpath(int trailing_slash);
+char *habit_make_filename(Habit *habit);
 Day *habit_add_day(Habit *habit, time_t time, int mark);
 Day *habit_add_today(Habit *habit, int mark);
 int default_habit_write(Habit *habit);
 char *default_habit_read();
+char *default_habit_path_make();
 time_t ymd_to_time_t(int year, int month, int day);
 int date_compare(time_t ts1, time_t ts2);
-char *habit_make_filename(Habit *habit);
-void print_help();
+void calc_stats(Habit *habit);
 Day *day_exists(Habit *habit, time_t time);
 void day_sort(Day arr[], int len);
-char *habitpath(int trailing_slash);
-char *default_habit_path_make();
-void switch_day_mark(Day *day);
-void calc_stats(Habit *habit);
 char *day_mark_str(int day_mark);
+void switch_day_mark(Day *day);
+void print_help();
+int file_exists(char *filename);
 
 int
 main(int argc, char *argv[]) {
@@ -103,18 +104,17 @@ main(int argc, char *argv[]) {
       printf("%s is not a directory nor a symlink\n", habit_path);
       return 1;
    }
+   free(habit_path);
 
-   char *habit_path_tr = habitpath(1);
    Habit habit = {0};
    habit.name = "";
    if (argc <= 1) {
       char *default_path = default_habit_path_make();
-      FILE *default_file = fopen(default_path, "r");
-      if (default_file == NULL) {
+      if (file_exists(default_path)) {
          print_help();
+         free(default_path);
          return 0;
       }
-      fclose(default_file);
 
       habit.name = default_habit_read();
       habit_file_read(&habit);
@@ -155,13 +155,15 @@ main(int argc, char *argv[]) {
          printf("Habit %s created\n", habit.name);
       }
    } else if (!strcmp(argv[1], habit_remove_arg)) {
+      char *filename = "";
       if (argc >= 3) {
          habit.name = argv[2];
-         if (habit_file_read(&habit)) {
+         filename = habit_make_filename(&habit);
+         if (file_exists(filename)) {
             fprintf(stderr, "%s does not exist\n", habit.name);
+            free(filename);
             return 1;
          }
-         char *filename = habit_make_filename(&habit);
          char choice = 0;
 
          printf("Are you sure you want to delete this habit?: [y/N] ");
@@ -169,65 +171,103 @@ main(int argc, char *argv[]) {
          if (choice == 'y' || choice == 'Y') {
             remove(filename);
             printf("%s has been deleted successfully\n", habit.name);
-         } else return 0;
+         }
       } else {
          fprintf(stderr, "No habit name was provided\n");
          return 1;
       }
+      free(filename);
    } else if (!strcmp(argv[1], habit_select_default_arg)) {
+      char* default_path = "";
       if (argc >= 3) {
          habit.name = argv[2];
-         if (habit_file_read(&habit)) {
+         char *habit_path = habit_make_filename(&habit);
+         if (file_exists(habit_path)) {
             fprintf(stderr, "Habit doesn't exist\n");
+            free(habit_path);
             return 1;
          }
          if (default_habit_write(&habit)) {
             fprintf(stderr, "Unable to write a default habit\n");
+            free(habit_path);
             return 1;
          }
          printf("%s has been selected as a default habit\n", habit.name);
-      } else if (default_habit_read() == NULL) {
+         free(habit_path);
+      } else if ((default_path = default_habit_read()) == NULL) {
          printf("Provide a habit name to set it as a default one\n");
          return 1;
-      } else if (default_habit_read() != NULL) {
-         remove(default_habit_path_make());
+      } else if (default_path != NULL) {
+         char *default_habit_path_file = default_habit_path_make();
+         remove(default_habit_path_file);
+         free(default_habit_path_file);
+         free(default_path);
          printf("Default habit has been unselected\n");
       }
    } else if (!strcmp(argv[1], habit_list_arg)) {
       struct dirent *de;
+      char *habit_path = habitpath(0);
       DIR *dr = opendir(habit_path);
       if (dr == NULL) {
          perror("ERROR");
+         free(habit_path);
+         return 1;
       }
+
+      Habit *habits;
+      int habit_count = 0;
       while ((de = readdir(dr)) != NULL)
          if (strcmp(de->d_name, "..")
              && strcmp(de->d_name, ".")
              && strcmp(de->d_name, "default")) {
-            habit.days_count = 0;
-            habit.name = calloc(strlen(de->d_name)-3, sizeof(char));
+            if (habit_count == 0) {
+               habit_count = 1;
+               habits = calloc(1, sizeof(Habit));
+            } else {
+               habit_count++;
+               habits = realloc(habits, habit_count * sizeof(Habit));
+            }
+            habits[habit_count-1].name = calloc(strlen(de->d_name), sizeof(char));
+            habits[habit_count-1].days_count = 0;
+            habits[habit_count-1].days = NULL;
+            habits[habit_count-1].stats.completed_days = 0;
+            habits[habit_count-1].stats.failed_days = 0;
+            habits[habit_count-1].stats.creation_timestamp = 0;
+
             for (int i = 0; i < strlen(de->d_name)-4; i++)
-               habit.name[i] = de->d_name[i];
-            habit.name[strlen(de->d_name)] = '\0';
-            habit_file_read(&habit);
-            printf("%s", habit.name);
-            if (habit.days_count > 0) {
-               if (!date_compare(habit.days[habit.days_count-1].timestamp, time(NULL)))
-                  printf(" (TODAY: %s)", 
-                         day_mark_str(habit.days[habit.days_count-1].marked));
+               habits[habit_count-1].name[i] = de->d_name[i];
+            habits[habit_count-1].name[strlen(de->d_name)-1] = '\0';
+            habit_file_read(&habits[habit_count-1]);
+            printf("%s", habits[habit_count-1].name);
+            if (habits[habit_count-1].days_count > 0) {
+               if (!date_compare(
+                     habits[habit_count-1].
+                        days[habits[habit_count-1].days_count-1].timestamp, 
+                     time(NULL)))
+                  printf(" (TODAY: %s)",
+                         day_mark_str(
+                           habits[habit_count-1].
+                           days[habits[habit_count-1].days_count-1].marked));
                printf("\n");
                printf("   Days "
                       ANSI_GRN "completed: %d; "
                       ANSI_RED "failed: %d; ",
-                         habit.stats.completed_days,
-                         habit.stats.failed_days);
+                         habits[habit_count-1].stats.completed_days,
+                         habits[habit_count-1].stats.failed_days);
             } else printf("\n   ");
-            struct tm *ti = localtime(&habit.stats.creation_timestamp);
+            struct tm *ti = localtime(
+               &habits[habit_count-1].stats.creation_timestamp);
             printf(ANSI_RESET "created %d.%02d.%02d\n", 
                    ti->tm_year + 1900,
                    ti->tm_mon + 1,
                    ti->tm_mday);
-            free(habit.name);
+            free(habits[habit_count-1].name);
+            free(habits[habit_count-1].days);
          }
+         free(habits);
+         free(habit_path);
+         closedir(dr);
+         return 0;
    } else if (!strcmp(argv[1], habit_display_arg) 
       || !strcmp(argv[1], habit_display_as_list_arg)) {
       int is_default = 0;
@@ -407,13 +447,12 @@ main(int argc, char *argv[]) {
              ti->tm_mday);
       if (is_default) free(habit.name);
    } else if (!strcmp(argv[1], habit_non_default_arg) || argv[1][0] != '-') {
-      // TODO: maybe add some sort of way to check if this piece of code
-      // has actually successfully worked out
       time_t new_day_timestamp;
       char *day_arg = NULL;
       int year, month, day;
       time_t time_now = time(NULL);
       struct tm *now = localtime(&time_now);
+      int is_default = 0;
 
       if (!strcmp(argv[1], habit_non_default_arg)) {
          if (argc > 2)
@@ -425,6 +464,7 @@ main(int argc, char *argv[]) {
          if (argc > 3) day_arg = argv[3];
       } else {
          habit.name = default_habit_read();
+         is_default = 1;
          day_arg = argv[1];
       }
       if (day_arg != NULL) {
@@ -442,6 +482,8 @@ main(int argc, char *argv[]) {
                now->tm_year+1900, now->tm_mon + 1, day);
          } else {
             fprintf(stderr, "The provided date \"%s\" cannot be parsed\n", day_arg);
+            free(habit.days);
+            if (is_default) free(habit.name);
             return 1;
          }
       } else new_day_timestamp = time(NULL);
@@ -480,6 +522,7 @@ main(int argc, char *argv[]) {
                       ti->tm_year + 1900,
                       ti->tm_mon + 1,
                       ti->tm_mday);
+               free(habit.days);
                return 1;
             }
 
@@ -491,14 +534,24 @@ main(int argc, char *argv[]) {
 
       calc_stats(&habit);
       habit_file_write(&habit, "w");
+      if (is_default) free(habit.name);
    } else {
       fprintf(stderr, "Wrong argument (use \"ht -h\" to get help for commands)\n");
    }
 
    free(habit.days);
-   free(habit_path);
-   free(habit_path_tr);
    return 0;
+}
+
+int
+file_exists(char *filename) {
+   struct stat st = {0};
+   int err = stat(filename, &st);
+   if (err == -1) {
+      return 1;
+   } else {
+      return 0;
+   }
 }
 
 int
@@ -506,9 +559,11 @@ habit_file_create(Habit *habit) {
    FILE *habit_file;
    char *filename = habit_make_filename(habit);
 
+
    habit_file = fopen(filename, "r");
    if (habit_file != NULL) {
       fclose(habit_file);
+      free(filename);
       return 1;
    } else {
       habit_file = fopen(filename, "w");
@@ -517,20 +572,18 @@ habit_file_create(Habit *habit) {
              habit->stats.completed_days,
              habit->stats.failed_days);
       fclose(habit_file);
+      free(filename);
       return 0;
    }
 }
 
 int
-habit_file_delete(Habit *habit) {
-   return 0;
-}
-
-int
 habit_file_read(Habit *habit) {
    char *filename = habit_make_filename(habit);
-   FILE *habit_file = fopen(filename, "r");
-   if (habit_file == NULL) {
+   FILE *habit_file;
+   if (!file_exists(filename)) {
+      habit_file = fopen(filename, "r");
+   } else {
       return 1;
    }
 
@@ -555,6 +608,7 @@ habit_file_write(Habit *habit, char *mode) {
    FILE *habit_file = fopen(filename, "r");
    if (habit_file == NULL) {
       fprintf(stderr, "file not found\n");
+      free(filename);
       return 1;
    }
    fclose(habit_file);
@@ -635,6 +689,7 @@ date_compare(time_t ts1, time_t ts2) {
    else return 0;
 }
 
+// this function doesn't free anything that it has malloc()ed
 char*
 habit_make_filename(Habit *habit) {
    char *path = habitpath(1);
@@ -646,6 +701,7 @@ habit_make_filename(Habit *habit) {
    return filename;
 }
 
+// this function doesn't free anything that it has malloc()ed
 char*
 default_habit_path_make() {
    char *habit_path = habitpath(1);
@@ -669,11 +725,17 @@ default_habit_write(Habit *habit) {
    return 0;
 }
 
+// this function doesn't free anything that it has malloc()ed
 char*
 default_habit_read() {
    char *default_path = default_habit_path_make();
-   FILE *default_file = fopen(default_path, "r");
-   if (default_file == NULL) return NULL;
+   FILE *default_file;
+   if (file_exists(default_path)) {
+      free(default_path);
+      return NULL;
+   } else {
+      default_file = fopen(default_path, "r");
+   }
 
    char buffer[256];
    fgets(buffer, 256, default_file);
