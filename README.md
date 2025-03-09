@@ -52,4 +52,6 @@ $ ht -r "the name of the habit" # Remove the habit,
 
 The default path for storing habits is `~/.local/share/ht`. If you want to change it, use `$HTDIR` environment variable in your shell.
 
+If you have nerd fonts installed, you can set `$HTDIR` to `1` in order to use them. This will change the way graph is displayed.
+
 This is the gist of using `ht`. There are some other arguments, if you wish to know them, use `ht -h`.

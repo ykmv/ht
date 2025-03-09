@@ -62,6 +62,7 @@ const char *default_habit_filename = "default";
 const char *habit_folder_path_env_var = "HTDIR";
 const char *default_habit_path = "/.local/share/ht";
 const char *date_format_env_var = "HTFORMAT";
+const char *nerd_font_var = "HTNERD";
 
 const char *habit_create_arg = "-a";
 const char *habit_remove_arg = "-r";
@@ -95,6 +96,7 @@ void switch_day_mark(Day *day);
 void print_help();
 void print_version();
 int file_exists(char *filename);
+void graph_cell_print(int cell);
 
 int
 main(int argc, char *argv[]) {
@@ -208,7 +210,7 @@ main(int argc, char *argv[]) {
          printf("%s has been selected as a default habit\n", habit.name);
          free(habit_path);
       } else if ((default_path = default_habit_read()) == NULL) {
-         printf("Provide a habit name to set it as a default one\n");
+         fprintf(stderr, "Provide a habit name to set it as a default one\n");
          return 1;
       } else if (default_path != NULL) {
          char *default_habit_path_file = default_habit_path_make();
@@ -373,21 +375,37 @@ main(int argc, char *argv[]) {
             Month *months = NULL;
             int months_count = 0;
 
+            int compare = 0;
             for (int y = GRAPH_YMAX-1; y >= 0; y--) {
                for (int x = GRAPH_XMAX-1; x >= 0; x--) {
                   if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
                      offset--;
                      continue;
                   } else {
-                     if (date_compare(habit.days[dc].timestamp, t) == 0) {
-                        if (habit.days[dc].marked == DAY_COMPLETE 
-                           || habit.days[dc].marked == DAY_FAILED && dc >= 0) {
-                           graph[x][y] = habit.days[dc].marked;
-                           if (dc > 0) dc--;
+                     if (dc >= 0) {
+                        compare = date_compare(habit.days[dc].timestamp, t);
+                        if (compare == 0) {
+                           if (habit.days[dc].marked == DAY_COMPLETE
+                              || habit.days[dc].marked == DAY_FAILED) {
+                              graph[x][y] = habit.days[dc].marked;
+                              if (!is_custom && 
+                                 date_compare(graph_limit, habit.days[dc].timestamp)
+                                 == 1) {
+                                 dc = -1;
+                                 graph_fillout = 10;
+                              } else if (!is_custom && dc == 0) {
+                                 dc = -1; 
+                                 graph_fillout = 10;
+                              }
+                              if (dc >= 0) dc--;
+                           }
                         }
-                     } else if (pattern % 2 == 0) {
+                     } else {
+                        compare = 1;
+                     }
+                     if (compare && pattern % 2 == 0) {
                         graph[x][y] = GRAPH_BLANK_EVEN;
-                     } else if (pattern % 2 == 1) {
+                     } else if (compare && pattern % 2 == 1) {
                         graph[x][y] = GRAPH_BLANK_ODD;
                      }
 
@@ -418,16 +436,6 @@ main(int argc, char *argv[]) {
                      }
                      t -= 86400;
                      pattern++;
-                  }
-               }
-
-               if (!is_custom && dc >= 0) {
-                  if (date_compare(graph_limit, habit.days[dc].timestamp) == 1) {
-                     graph_fillout = 10;
-                     dc = -1;
-                  } else if (dc == 0) {
-                     graph_fillout = 10;
-                     dc = -1;
                   }
                }
 
@@ -477,15 +485,7 @@ main(int argc, char *argv[]) {
                   default: printf("   ");
                }
                for (int y = last_column; y < GRAPH_YMAX; y++) {
-                  switch(graph[x][y]) {
-                     case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
-                     case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
-                     case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
-                     case GRAPH_BLANK_ODD:
-                        printf(ANSI_BGIBLK "  " ANSI_RESET); break;
-                     case GRAPH_BLANK_EVEN:
-                        printf(ANSI_BGGRY "  " ANSI_RESET); break;
-                  }
+                  graph_cell_print(graph[x][y]);
                }
                switch (x) {
                   case 0: printf("Mon"); break;
@@ -857,6 +857,7 @@ print_help() {
    printf("ht -cl : display list of days of a default habit\n");
    printf("ht -cl <habit> : display list of days of a selected habit\n");
    printf("\nUse $%s to select habit path\n", habit_folder_path_env_var);
+   printf("Set $%s to \"1\" to use nerd font symbols in the -c graph\n", nerd_font_var);
    printf("This help message is displayed when no default habit was selected\n");
 }
 
@@ -941,4 +942,31 @@ day_mark_str(int day_mark) {
 void
 print_version() {
    printf("ht: version 1.0.0\n");
+}
+
+void
+graph_cell_print(int cell) {
+   char *nerd_font = getenv(nerd_font_var);
+   int c = (nerd_font != NULL) ? strcmp(nerd_font, "1") : 1;
+   if (!c) {
+      switch (cell) {
+         case DAY_COMPLETE: printf(ANSI_GRN " " ANSI_RESET); break;
+         case DAY_FAILED:   printf(ANSI_RED " " ANSI_RESET); break;
+         case DAY_UNMARKED: printf(ANSI_RESET " " ANSI_RESET); break;
+         case GRAPH_BLANK_ODD:
+            printf(ANSI_BLK " " ANSI_RESET); break;
+         case GRAPH_BLANK_EVEN:
+            printf(ANSI_BLK " " ANSI_RESET); break;
+      }
+   } else {
+      switch (cell) {
+         case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
+         case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
+         case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
+         case GRAPH_BLANK_ODD:
+            printf(ANSI_BGIBLK "  " ANSI_RESET); break;
+         case GRAPH_BLANK_EVEN:
+            printf(ANSI_BGGRY "  " ANSI_RESET); break;
+      }
+   }
 }
