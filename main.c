@@ -307,6 +307,7 @@ main(int argc, char *argv[]) {
             if (!strcmp(argv[3], "-w")) {
                if (argc == 4) { 
                   fprintf(stderr, "Please provide a width\n");
+                  return 1;
                } else {
                   is_custom = 1;
                   custom_width = atoi(argv[4]);
@@ -952,7 +953,7 @@ graph_cell_print(int cell) {
       switch (cell) {
          case DAY_COMPLETE: printf(ANSI_GRN " " ANSI_RESET); break;
          case DAY_FAILED:   printf(ANSI_RED " " ANSI_RESET); break;
-         case DAY_UNMARKED: printf(ANSI_RESET " " ANSI_RESET); break;
+         case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
          case GRAPH_BLANK_ODD:
             printf(ANSI_BLK " " ANSI_RESET); break;
          case GRAPH_BLANK_EVEN:
