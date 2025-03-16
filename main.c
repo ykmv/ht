@@ -14,6 +14,11 @@
 //       (maybe use `fzf' if it is present in the system?)
 // TODO: Add a check for ANSI colours support
 // TODO: add -y to the -c argument to allow to see a specific year
+// TODO: Add quantity to the habit (i.e. how many times the habit needs to be
+//       completed in a day)
+// TODO: Add frequency to the habit (i.e. once per day once per week, once per
+//       month, etc.)
+//
 
 // A Habit Tracker
 //
@@ -22,6 +27,18 @@
 //   Day,Marked
 
 extern int errno;
+
+#define HABIT_CREATE_ARG "a"
+#define HABIT_REMOVE_ARG "r"
+#define HABIT_LIST_ARG "l"
+#define HABIT_SELECT_DEFAULT_ARG "s"
+#define HABIT_FOLDER_SELECT_ARG "f"
+#define HABIT_DISPLAY_ARG "c"
+#define HABIT_DISPLAY_AS_LIST_ARG "C"
+#define HABIT_ADD_DAY_ARG "d"
+#define HABIT_NON_DEFAULT_ARG "H"
+#define PRINT_HELP_ARG "h"
+#define VERSION_ARG "v"
 
 #define ANSI_BLK "\e[0;30m"
 #define ANSI_RED "\e[0;31m"
@@ -59,10 +76,12 @@ typedef struct {
 } Habit;
 
 const char *default_habit_filename = "default";
-const char *habit_folder_path_env_var = "HTDIR";
 const char *default_habit_path = "/.local/share/ht";
+
+const char *habit_folder_path_env_var = "HTDIR";
 const char *date_format_env_var = "HTFORMAT";
 const char *nerd_font_var = "HTNERD";
+const char *mark_prev_unmarked_days_as_failed_env_var = "HTUNMARKEDTOFAIL";
 
 const char *habit_create_arg = "-a";
 const char *habit_remove_arg = "-r";
@@ -97,6 +116,7 @@ void print_help();
 void print_version();
 int file_exists(char *filename);
 void graph_cell_print(int cell);
+void fillout_skipped_days(Habit *habit);
 
 int
 main(int argc, char *argv[]) {
@@ -140,6 +160,8 @@ main(int argc, char *argv[]) {
                 day_mark_str(temp),
                 day_mark_str(habit.days[habit.days_count-1].marked));
       }
+
+      fillout_skipped_days(&habit);
 
       calc_stats(&habit);
       habit_file_write(&habit, "w");
@@ -185,6 +207,8 @@ main(int argc, char *argv[]) {
                char *default_habit_path = default_habit_path_make();
                remove(default_habit_path);
                printf("%s was default, default habit is no longer set\n", habit.name);
+               free(default_habit_path);
+               free(default_habit_name);
             }
          }
       } else {
@@ -242,6 +266,7 @@ main(int argc, char *argv[]) {
                habit_count++;
                habits = realloc(habits, habit_count * sizeof(Habit));
             }
+
             habits[habit_count-1].name = calloc(strlen(de->d_name), sizeof(char));
             habits[habit_count-1].days_count = 0;
             habits[habit_count-1].days = NULL;
@@ -252,6 +277,7 @@ main(int argc, char *argv[]) {
             for (int i = 0; i < strlen(de->d_name)-4; i++)
                habits[habit_count-1].name[i] = de->d_name[i];
             habits[habit_count-1].name[strlen(de->d_name)-1] = '\0';
+
             habit_file_read(&habits[habit_count-1]);
             printf("%s", habits[habit_count-1].name);
             if (habits[habit_count-1].days_count > 0) {
@@ -289,6 +315,8 @@ main(int argc, char *argv[]) {
       int is_custom = 0;
       int custom_width = 0;
       int arg_offset = 0;
+      int display_year = 0;
+
       if (argc == 2) {
          is_default = 1;
          habit.name = default_habit_read();
@@ -305,7 +333,7 @@ main(int argc, char *argv[]) {
       } else {
          if (argc >= 4) {
             if (!strcmp(argv[3], "-w")) {
-               if (argc == 4) { 
+               if (argc == 4) {
                   fprintf(stderr, "Please provide a width\n");
                   return 1;
                } else {
@@ -644,6 +672,7 @@ habit_file_create(Habit *habit) {
    }
 }
 
+// habit.days needs to be freed after it is no longer needed in the program.
 int
 habit_file_read(Habit *habit) {
    char *filename = habit_make_filename(habit);
@@ -860,6 +889,7 @@ print_help() {
    printf("\nUse $%s to select habit path\n", habit_folder_path_env_var);
    printf("Set $%s to \"1\" to use nerd font symbols in the -c graph\n", nerd_font_var);
    printf("This help message is displayed when no default habit was selected\n");
+   print_version();
 }
 
 Day*
@@ -883,7 +913,9 @@ habitpath(int trailing_slash) {
    char *envpath = getenv(habit_folder_path_env_var);
    if (envpath == NULL) {
       const char *homepath = getenv("HOME");
-      path = malloc(strlen(default_habit_path) + strlen(homepath) + sizeof(char) * 1);
+      path = malloc(strlen(default_habit_path) 
+                    + strlen(homepath) 
+                    + sizeof(char) * 1);
       strcpy(path, homepath);
       strcat(path, default_habit_path);
    } else {
@@ -928,10 +960,10 @@ char*
 day_mark_str(int day_mark) {
    switch(day_mark) {
       case DAY_COMPLETE: {
-         return "DONE";
+         return ANSI_GRN "DONE" ANSI_RESET;
       } break;
       case DAY_FAILED: {
-         return "fail";
+         return ANSI_RED "fail" ANSI_RESET;
       } break;
       case DAY_UNMARKED: {
          return "deleted";
@@ -942,7 +974,7 @@ day_mark_str(int day_mark) {
 
 void
 print_version() {
-   printf("ht: version 1.0.0\n");
+   printf("ht: version 1.1.0dev\n");
 }
 
 void
@@ -969,5 +1001,24 @@ graph_cell_print(int cell) {
          case GRAPH_BLANK_EVEN:
             printf(ANSI_BGGRY "  " ANSI_RESET); break;
       }
+   }
+}
+
+void
+fillout_skipped_days(Habit *habit) {
+   char *env_var = getenv(mark_prev_unmarked_days_as_failed_env_var);
+   int cmp = (env_var != NULL) ? strcmp(env_var, "0") : 1;
+   if (cmp) {
+      time_t now = time(NULL);
+      int d = habit->days_count-1;
+      while (date_compare(now, habit->stats.creation_timestamp) >= 0) {
+         if (date_compare(habit->days[d].timestamp, now) == 0) {
+            if (d > 0) d--;
+         } else {
+            habit_add_day(habit, now, DAY_FAILED);
+         }
+         now -= 86400;
+      }
+      day_sort(habit->days, habit->days_count);
    }
 }
