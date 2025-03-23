@@ -42,8 +42,9 @@ extern char *optarg;
 #define PRINT_VERSION_ARG 'v'
 #define GRAPH_WIDTH_ARG 'w'
 #define GRAPH_YEAR_ARG 'y'
+#define FORCE_DELETE_ARG 'f'
 
-#define ALLARGS "a:r:ls:Sc:C:H:hvy:w:d:"
+#define ALLARGS "a:r:ls:Sc:C:H:hvy:w:d:f"
 
 #define ANSI_BLK "\e[0;30m"
 #define ANSI_RED "\e[0;31m"
@@ -157,7 +158,7 @@ main(int argc, char *argv[]) {
       } else {
          int temp = habit.days[habit.days_count-1].marked;
          switch_day_mark(&habit.days[habit.days_count-1]);
-         printf("TODAY: %s -> %s\n", 
+         printf("TODAY: %s -> %s\n",
                 day_mark_str(temp),
                 day_mark_str(habit.days[habit.days_count-1].marked));
       }
@@ -329,7 +330,7 @@ main(int argc, char *argv[]) {
                remove(default_habit_path_file);
                free(default_habit_path_file);
                free(default_path);
-               fprintf(stderr, "Default habit has been unselected\n");
+               printf("Default habit has been unselected\n");
             }
          } break;
          case PRINT_HELP_ARG: {
@@ -476,30 +477,60 @@ main(int argc, char *argv[]) {
          case HABIT_DISPLAY_AS_LIST_ARG: {
             Habit habit = {0};
             int is_default = 0;
-            if (optarg != NULL) {
-               if (!strcmp(optarg, "-") || optarg[0] == '-') {
-                  optind -= 1;
-                  is_default++;
-                  habit.name = default_habit_read();
-               } else {
-                  habit.name = optarg;
+            int is_preloaded = 0;
+            if (!strcmp(optarg, "-") || optarg[0] == '-') {
+               optind -= 1;
+               is_default++;
+               habit.name = default_habit_read();
+            } else {
+               habit.name = optarg;
+               for (int i = 0; i < habit_count; i++) {
+                  if (!strcmp(optarg, habits[i].name)) {
+                     is_preloaded = 1;
+                     habit = habits[i];
+                  }
                }
             }
-            habit_display_as_list(&habit, is_default);
+            if (!is_preloaded) {
+               if (habit_file_read(&habit)) {
+                  fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                          " doesn't exist\n", optarg);
+               }
+               else {
+                  habit_display_as_list(&habit, is_default);
+                  if (!is_preloaded) free(habit.days);
+               } 
+               if (is_default) free(habit.name);
+            }
          } break;
          case HABIT_DISPLAY_ARG: {
             Habit habit = {0};
             int is_default = 0;
-            if (optarg != NULL) {
-               if (!strcmp(optarg, "-") || optarg[0] == '-') {
-                  optind -= 1;
-                  is_default++;
-                  habit.name = default_habit_read();
-               } else {
-                  habit.name = optarg;
+            int is_preloaded = 0;
+            if (!strcmp(optarg, "-") || optarg[0] == '-') {
+               optind -= 1;
+               is_default++;
+               habit.name = default_habit_read();
+            } else {
+               habit.name = optarg;
+               for (int i = 0; i < habit_count; i++) {
+                  if (!strcmp(optarg, habits[i].name)) {
+                     is_preloaded = 1;
+                     habit = habits[i];
+                  }
                }
             }
-            habit_display_graph(&habit, is_default, 30);
+            if (!is_preloaded)  {
+               if (habit_file_read(&habit)) {
+                  fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                          " doesn't exist\n", optarg);
+               }
+               else {
+                  habit_display_graph(&habit, is_default, 30);
+                  if (!is_preloaded) free(habit.days);
+               }
+               if (is_default) free(habit.name);
+            }
          } break;
          case '?': {
             switch(optopt) {
@@ -507,17 +538,25 @@ main(int argc, char *argv[]) {
                   Habit habit = {0};
                   habit.name = default_habit_read();
                   if (habit.name != NULL) {
+                     habit_file_read(&habit);
                      habit_display_as_list(&habit, 1);
-                     free(habit.name);
+                     free(habit.days);
+                  } else {
+                     fprintf(stderr, "Default habit has not been set, please provide a habit name\n");
                   }
+                  free(habit.name);
                } break;
                case HABIT_DISPLAY_ARG: {
                   Habit habit = {0};
                   habit.name = default_habit_read();
                   if (habit.name != NULL) {
+                     habit_file_read(&habit);
                      habit_display_graph(&habit, 1, 30);
-                     free(habit.name);
+                     free(habit.days);
+                  } else {
+                     fprintf(stderr, "Default habit has not been set, please provide a habit name\n");
                   }
+                  free(habit.name);
                } break;
             }
          } break;
@@ -945,7 +984,6 @@ habit_display_graph(Habit *habit, int is_default, int custom_width) {
    printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
    if (is_default) printf(" (default)");
    printf("\n");
-   habit_file_read(habit);
    int is_custom = 0;
    int graph[GRAPH_XMAX][GRAPH_YMAX] = {0};
    int last_column = 0;
@@ -960,135 +998,138 @@ habit_display_graph(Habit *habit, int is_default, int custom_width) {
    int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
    offset = 7 - offset;
 
-   typedef struct {
-      int i;
-      const char *name;
-   } Month;
-   Month *months = NULL;
-   int months_count = 0;
+   if (habit->days_count > 0) {
+      typedef struct {
+         int i;
+         const char *name;
+      } Month;
+      Month *months = NULL;
+      int months_count = 0;
 
-   int compare = 0;
-   for (int y = GRAPH_YMAX-1; y >= 0; y--) {
-      for (int x = GRAPH_XMAX-1; x >= 0; x--) {
-         if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
-            offset--;
-            continue;
-         } else {
-            if (dc >= 0) {
-               compare = date_compare(habit->days[dc].timestamp, t);
-               if (compare == 0) {
-                  if (habit->days[dc].marked == DAY_COMPLETE
-                     || habit->days[dc].marked == DAY_FAILED) {
-                     graph[x][y] = habit->days[dc].marked;
-                     if (!is_custom && 
-                        date_compare(graph_limit, habit->days[dc].timestamp)
-                        == 1) {
-                        dc = -1;
-                        graph_fillout = 10;
-                     } else if (!is_custom && dc == 0) {
-                        dc = -1; 
-                        graph_fillout = 10;
-                     }
-                     if (dc >= 0) dc--;
-                  }
-               }
+      int compare = 0;
+      for (int y = GRAPH_YMAX-1; y >= 0; y--) {
+         for (int x = GRAPH_XMAX-1; x >= 0; x--) {
+            if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
+               offset--;
+               continue;
             } else {
-               compare = 1;
-            }
-            if (compare && pattern % 2 == 0) {
-               graph[x][y] = GRAPH_BLANK_EVEN;
-            } else if (compare && pattern % 2 == 1) {
-               graph[x][y] = GRAPH_BLANK_ODD;
-            }
-
-            ti = localtime(&t);
-            if (ti->tm_mday == 1) {
-               if (months_count == 0) {
-                  months_count = 1;
-                  months = malloc(sizeof(Month) * months_count);
+               if (dc >= 0) {
+                  compare = date_compare(habit->days[dc].timestamp, t);
+                  if (compare == 0) {
+                     if (habit->days[dc].marked == DAY_COMPLETE
+                        || habit->days[dc].marked == DAY_FAILED) {
+                        graph[x][y] = habit->days[dc].marked;
+                        if (!is_custom && 
+                           date_compare(graph_limit, habit->days[dc].timestamp)
+                           == 1) {
+                           dc = -1;
+                           graph_fillout = 10;
+                        } else if (!is_custom && dc == 0) {
+                           dc = -1; 
+                           graph_fillout = 10;
+                        }
+                        if (dc >= 0) dc--;
+                     }
+                  }
                } else {
-                  months_count++;
-                  months = realloc(months, sizeof(Month) * months_count);
+                  compare = 1;
                }
-               switch (ti->tm_mon) {
-                  case  0: months[months_count-1].name = "Jan"; break;
-                  case  1: months[months_count-1].name = "Feb"; break;
-                  case  2: months[months_count-1].name = "Mar"; break;
-                  case  3: months[months_count-1].name = "Apr"; break;
-                  case  4: months[months_count-1].name = "May"; break;
-                  case  5: months[months_count-1].name = "Jun"; break;
-                  case  6: months[months_count-1].name = "Jul"; break;
-                  case  7: months[months_count-1].name = "Aug"; break;
-                  case  8: months[months_count-1].name = "Sep"; break;
-                  case  9: months[months_count-1].name = "Oct"; break;
-                  case 10: months[months_count-1].name = "Nov"; break;
-                  case 11: months[months_count-1].name = "Dec"; break;
+               if (compare && pattern % 2 == 0) {
+                  graph[x][y] = GRAPH_BLANK_EVEN;
+               } else if (compare && pattern % 2 == 1) {
+                  graph[x][y] = GRAPH_BLANK_ODD;
                }
-               months[months_count-1].i = y;
+
+               ti = localtime(&t);
+               if (ti->tm_mday == 1) {
+                  if (months_count == 0) {
+                     months_count = 1;
+                     months = malloc(sizeof(Month) * months_count);
+                  } else {
+                     months_count++;
+                     months = realloc(months, sizeof(Month) * months_count);
+                  }
+                  switch (ti->tm_mon) {
+                     case  0: months[months_count-1].name = "Jan"; break;
+                     case  1: months[months_count-1].name = "Feb"; break;
+                     case  2: months[months_count-1].name = "Mar"; break;
+                     case  3: months[months_count-1].name = "Apr"; break;
+                     case  4: months[months_count-1].name = "May"; break;
+                     case  5: months[months_count-1].name = "Jun"; break;
+                     case  6: months[months_count-1].name = "Jul"; break;
+                     case  7: months[months_count-1].name = "Aug"; break;
+                     case  8: months[months_count-1].name = "Sep"; break;
+                     case  9: months[months_count-1].name = "Oct"; break;
+                     case 10: months[months_count-1].name = "Nov"; break;
+                     case 11: months[months_count-1].name = "Dec"; break;
+                  }
+                  months[months_count-1].i = y;
+               }
+               t -= 86400;
+               pattern++;
             }
-            t -= 86400;
-            pattern++;
+         }
+
+         if (graph_fillout > 0) {
+            --graph_fillout;
+            last_column = y;
+         } else if (graph_fillout == 0) {
+            break;
+         } else {
+            if (is_custom) {
+               if (y <= GRAPH_YMAX-custom_width) {
+                  last_column = y;
+                  break;
+               }
+            }
          }
       }
 
-      if (graph_fillout > 0) {
-         --graph_fillout;
-         last_column = y;
-      } else if (graph_fillout == 0) {
-         break;
-      } else {
-         if (is_custom)
-            if (y <= GRAPH_YMAX-custom_width) {
-               last_column = y;
-               break;
-            }
-      }
-   }
+      const char* sep = "  ";
+      const char* half_sep = " ";
 
-   const char* sep = "  ";
-   const char* half_sep = " ";
-
-   int i = 0;
-   if (months_count > 0) {
-      i = months_count-1;
-      for (int k = 0; k < months_count; k++)
-         if (months[i].i < last_column && i > 0)
-            i--;
-      int nextishalf = 0;
-      printf("   ");
-      for (int y = last_column; y < GRAPH_YMAX; y++) {
-         if (months[i].i == y) {
-            printf("%s", months[i].name);
-            if (i != 0) i--;
-            nextishalf = 1;
-         } else if (nextishalf == 1) {
-            printf("%s", half_sep);
-            nextishalf = 0;
-         } else printf("%s", sep);
-      }
-   }
-   printf("\n");
-   for (int x = 0; x < GRAPH_XMAX; x++) {
-      switch (x) {
-         case 0: printf("Mon"); break;
-         case 2: printf("Wed"); break;
-         case 4: printf("Fri"); break;
-         case 6: printf("Sun"); break;
-         default: printf("   ");
-      }
-      for (int y = last_column; y < GRAPH_YMAX; y++) {
-         graph_cell_print(graph[x][y]);
-      }
-      switch (x) {
-         case 0: printf("Mon"); break;
-         case 2: printf("Wed"); break;
-         case 4: printf("Fri"); break;
-         case 6: printf("Sun"); break;
-         default: printf("   ");
+      int i = 0;
+      if (months_count > 0) {
+         i = months_count-1;
+         for (int k = 0; k < months_count; k++)
+            if (months[i].i < last_column && i > 0)
+               i--;
+         int nextishalf = 0;
+         printf("   ");
+         for (int y = last_column; y < GRAPH_YMAX; y++) {
+            if (months[i].i == y) {
+               printf("%s", months[i].name);
+               if (i != 0) i--;
+               nextishalf = 1;
+            } else if (nextishalf == 1) {
+               printf("%s", half_sep);
+               nextishalf = 0;
+            } else printf("%s", sep);
+         }
       }
       printf("\n");
+      for (int x = 0; x < GRAPH_XMAX; x++) {
+         switch (x) {
+            case 0: printf("Mon"); break;
+            case 2: printf("Wed"); break;
+            case 4: printf("Fri"); break;
+            case 6: printf("Sun"); break;
+            default: printf("   ");
+         }
+         for (int y = last_column; y < GRAPH_YMAX; y++) {
+            graph_cell_print(graph[x][y]);
+         }
+         switch (x) {
+            case 0: printf("Mon"); break;
+            case 2: printf("Wed"); break;
+            case 4: printf("Fri"); break;
+            case 6: printf("Sun"); break;
+            default: printf("   ");
+         }
+         printf("\n");
+      }
+      if (months != NULL) free(months);
    }
-   if (months != NULL) free(months);
    if (habit->stats.completed_days == 0
       && habit->stats.failed_days == 0)
       calc_stats(habit);
@@ -1108,25 +1149,26 @@ habit_display_as_list(Habit *habit, int is_default) {
    printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
    if (is_default) printf(" (default)");
    printf("\n");
-   habit_file_read(habit);
-   for (int i = 0; i < habit->days_count; i++) {
-      struct tm *timeinfo = localtime(&habit->days[i].timestamp);
-      switch(habit->days[i].marked) {
-         case DAY_COMPLETE: {
-            printf(ANSI_GRN);
-         } break;
-         case DAY_FAILED: {
-            printf(ANSI_RED);
-         } break;
-         case DAY_UNMARKED: {
-            printf(ANSI_BLK);
-         } break;
+   if (habit->days_count > 0) {
+      for (int i = 0; i < habit->days_count; i++) {
+         struct tm *timeinfo = localtime(&habit->days[i].timestamp);
+         switch(habit->days[i].marked) {
+            case DAY_COMPLETE: {
+               printf(ANSI_GRN);
+            } break;
+            case DAY_FAILED: {
+               printf(ANSI_RED);
+            } break;
+            case DAY_UNMARKED: {
+               printf(ANSI_BLK);
+            } break;
+         }
+         printf("day: %d.%02d.%02d %s" ANSI_RESET "\n",
+                timeinfo->tm_year + 1900,
+                timeinfo->tm_mon + 1,
+                timeinfo->tm_mday,
+                day_mark_str(habit->days[i].marked));
       }
-      printf("day: %d.%02d.%02d %s" ANSI_RESET "\n",
-             timeinfo->tm_year + 1900,
-             timeinfo->tm_mon + 1,
-             timeinfo->tm_mday,
-             day_mark_str(habit->days[i].marked));
    }
    if (habit->stats.completed_days == 0
       && habit->stats.failed_days == 0)
@@ -1140,5 +1182,4 @@ habit_display_as_list(Habit *habit, int is_default) {
           ti->tm_year + 1900,
           ti->tm_mon + 1,
           ti->tm_mday);
-   free(habit->days);
 }
