@@ -34,7 +34,7 @@ ht
 ```
 Mark default habit as completed for today.
 Run this once again to mark today as failed.
-Running this once more will delete the day. kk
+Running this once more will delete the day.
 
 ```sh
 ht -c 

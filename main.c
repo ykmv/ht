@@ -203,9 +203,7 @@ main(int argc, char *argv[]) {
             filename = habit_make_filename(&habit);
             if (file_exists(filename)) {
                fprintf(stderr, "%s does not exist\n", habit.name);
-               free(filename);
             } else {
-               // TODO: check if the deleted habit is actually a default one
                char choice = 0;
                printf("Are you sure you want to delete this habit?: [y/N] ");
                scanf("%c", &choice);
@@ -216,19 +214,21 @@ main(int argc, char *argv[]) {
                      fprintf(stderr, "failed to delete %s\n", habit.name);
 
                   char *default_habit_name = default_habit_read();
-                  if (default_habit_name != NULL) {
+                  if (default_habit_name != NULL
+                      && !strcmp(optarg, default_habit_name)) {
                      char *default_habit_path = default_habit_path_make();
                      if (!remove(default_habit_path)) {
                         printf(ANSI_YEL "%s" ANSI_RESET
-                           "was default, default habit is no longer set\n",
+                           " was default, default habit is no longer set\n",
                            habit.name);
                      } else {
                         printf("failed to unset default habit\n");
                      }
                      free(default_habit_path);
-                     free(default_habit_name);
                   }
+                  free(default_habit_name);
                }
+               free(filename);
             }
          } break;
          case HABIT_LIST_ARG: {
@@ -240,67 +240,67 @@ main(int argc, char *argv[]) {
                perror("ERROR");
                free(habit_path);
             } else {
-               Habit *list_habits;
-               int lhabit_count = 0;
+               Habit *lh; // list habits
+               int lhc = 0; // list habit count
                while ((de = readdir(dr)) != NULL)
                   if (strcmp(de->d_name, "..")
                       && strcmp(de->d_name, ".")
                       && strcmp(de->d_name, "default")) {
-                     if (lhabit_count == 0) {
-                        lhabit_count = 1;
-                        list_habits = calloc(1, sizeof(Habit));
+                     if (lhc == 0) {
+                        lhc = 1;
+                        lh = calloc(1, sizeof(Habit));
                      } else {
-                        lhabit_count++;
-                        list_habits = realloc(list_habits, lhabit_count * sizeof(Habit));
+                        lhc++;
+                        lh = realloc(lh, lhc * sizeof(Habit));
                      }
 
-                     list_habits[lhabit_count-1].name = calloc(
+                     lh[lhc-1].name = calloc(
                         strlen(de->d_name)-3,
                         sizeof(char));
-                     list_habits[lhabit_count-1].days_count = 0;
-                     list_habits[lhabit_count-1].days = NULL;
-                     list_habits[lhabit_count-1].stats.completed_days = 0;
-                     list_habits[lhabit_count-1].stats.failed_days = 0;
-                     list_habits[lhabit_count-1].stats.creation_timestamp = 0;
+                     lh[lhc-1].days_count = 0;
+                     lh[lhc-1].days = NULL;
+                     lh[lhc-1].stats.completed_days = 0;
+                     lh[lhc-1].stats.failed_days = 0;
+                     lh[lhc-1].stats.creation_timestamp = 0;
 
                      for (int i = 0; i < strlen(de->d_name)-4; i++)
-                        list_habits[lhabit_count-1].name[i] = de->d_name[i];
+                        lh[lhc-1].name[i] = de->d_name[i];
 
-                     habit_file_read(&list_habits[lhabit_count-1]);
-                     printf("%s", list_habits[lhabit_count-1].name);
+                     habit_file_read(&lh[lhc-1]);
+                     printf("%s", lh[lhc-1].name);
                      char *default_habit_name = default_habit_read();
                      int dhn = (default_habit_name != NULL) ?
                         !strcmp(default_habit_name, 
-                                list_habits[lhabit_count-1].name)
+                                lh[lhc-1].name)
                         : 0;
                      if (dhn) printf(" (default)");
                      free(default_habit_name);
-                     if (list_habits[lhabit_count-1].days_count > 0) {
+                     if (lh[lhc-1].days_count > 0) {
                         if (!date_compare(
-                              list_habits[lhabit_count-1].
-                                 days[list_habits[lhabit_count-1].days_count-1].timestamp,
+                              lh[lhc-1].
+                                 days[lh[lhc-1].days_count-1].timestamp,
                               time(NULL)))
                            printf(" (TODAY: %s)",
                                   day_mark_str(
-                                    list_habits[lhabit_count-1].
-                                    days[list_habits[lhabit_count-1].days_count-1].marked));
+                                    lh[lhc-1].
+                                    days[lh[lhc-1].days_count-1].marked));
                         printf("\n");
                         printf("   Days "
                                ANSI_GRN "completed: %d; "
                                ANSI_RED "failed: %d; ",
-                                  list_habits[lhabit_count-1].stats.completed_days,
-                                  list_habits[lhabit_count-1].stats.failed_days);
+                                  lh[lhc-1].stats.completed_days,
+                                  lh[lhc-1].stats.failed_days);
                      } else printf("\n   ");
                      struct tm *ti = localtime(
-                        &list_habits[lhabit_count-1].stats.creation_timestamp);
+                        &lh[lhc-1].stats.creation_timestamp);
                      printf(ANSI_RESET "created %d.%02d.%02d\n", 
                             ti->tm_year + 1900,
                             ti->tm_mon + 1,
                             ti->tm_mday);
-                     free(list_habits[lhabit_count-1].name);
-                     free(list_habits[lhabit_count-1].days);
+                     free(lh[lhc-1].name);
+                     free(lh[lhc-1].days);
                   }
-                  free(list_habits);
+                  free(lh);
                   free(habit_path);
                   closedir(dr);
             } 
