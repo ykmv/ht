@@ -90,6 +90,8 @@ const char *habit_folder_path_env_var = "HTDIR";
 const char *date_format_env_var = "HTFORMAT";
 const char *nerd_font_var = "HTNERD";
 const char *mark_prev_unmarked_days_as_failed_env_var = "HTUNMARKEDTOFAIL";
+const char *graph_width_env_var = "HTGRAPHWIDTH";
+const char *force_delete_env_var = "HTFORCEDELETE";
 
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
@@ -179,7 +181,7 @@ main(int argc, char *argv[]) {
    Habit *habits = NULL;
    char *default_path = default_habit_read();
 
-   opterr = 1;
+   opterr = 0;
    char option;
    while ((option = getopt(argc, argv, ALLARGS)) != -1) { 
       switch (option) {
@@ -824,26 +826,31 @@ day_sort(Day arr[], int len) {
 
 void
 print_help() {
-   printf(" === ht - CLI Habit Tracker === \n");
-   printf("ht -h : print this message\n");
-   printf("ht -a <name> : add new habit\n");
-   printf("ht -r <name> : remove habit\n");
-   printf("ht -l        : list habits\n");
-   printf("ht -s <name> : select habit as a default one\n");
-   printf("ht -s : unmark habit as default one (if it it was selected beforehand)\n");
-   printf("ht : mark default habit as completed for today\n");
-   printf("     (running this once again will unmark the habit)\n");
-   printf("ht <YYYY.MM.DD> : mark default habit as completed for any day before today\n");
-   printf("     (running this once again will unmark the habit)\n");
-   printf("ht -H <habit> : mark any habit that isn't default\n");
-   printf("ht -H <habit> <YYYY.MM.DD> : mark any day of the habit\n");
-   printf("ht -c : display graph with a default habit\n");
-   printf("ht -c <habit> : display graph with a selected habit\n");
-   printf("      : custom width of the graph can be set with -w [1-39] argument\n");
-   printf("ht -cl : display list of days of a default habit\n");
-   printf("ht -cl <habit> : display list of days of a selected habit\n");
+   printf(
+      " === ht - CLI Habit Tracker === \n"
+      "ht -h : print this message\n"
+      "ht -a <name> : add new habit\n"
+      "ht -r <name> : remove habit\n"
+      "ht -l        : list habits\n"
+      "ht -s <name> : select habit as a default one\n"
+      "ht -S : deselect default habit (if it was selected beforehand)\n"
+      "ht : mark default habit as completed for today\n"
+      "     (running this once again will mark the habit as failed)\n"
+      "     (running this once more will delete this day from a habit)\n"
+      "ht -d <YYYY.MM.DD> : mark default habit as completed for any day before today\n"
+      "     (running this once again will unmark the habit)\n"
+      "ht -H <habit> : mark any habit that isn't default\n"
+      "ht -H <habit> -d <YYYY.MM.DD> : mark any day of the habit\n"
+      "ht -c : display graph with a default habit\n"
+      "ht -c <habit> : display graph with a selected habit\n"
+      "   -w : specify the width of the graph (should be specified before -c) <TBD>\n"
+      "   -y : specify the year of the graph (should be specified before -c) <TBD>\n"
+      "ht -C : display list of days of a default habit\n"
+      "ht -C <habit> : display list of days of a selected habit\n");
    printf("\nUse $%s to select habit path\n", habit_folder_path_env_var);
    printf("Set $%s to \"1\" to use nerd font symbols in the -c graph\n", nerd_font_var);
+   printf("<TBD> You can set custom width of the graph with $%s\n", graph_width_env_var);
+   printf("<TBD> You can disable remove confirmation with $%s\n", force_delete_env_var);
    printf("This help message is displayed when no default habit was selected\n");
    print_version();
 }
