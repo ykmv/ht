@@ -13,7 +13,6 @@
 //       by the means of env variable
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
-// TODO: Add a check for ANSI colours support
 // TODO: add -y to the -c argument to allow to see a specific year
 // TODO: Add quantity to the habit (i.e. how many times the habit needs to be
 //       completed in a day)
@@ -63,6 +62,7 @@ extern char *optarg;
 #define DAY_UNMARKED 0
 #define DAY_COMPLETE 1
 #define DAY_FAILED  -1
+
 typedef struct {
    signed int marked;
    time_t timestamp;
@@ -92,6 +92,9 @@ const char *nerd_font_var = "HTNERD";
 const char *mark_prev_unmarked_days_as_failed_env_var = "HTUNMARKEDTOFAIL";
 const char *graph_width_env_var = "HTGRAPHWIDTH";
 const char *force_delete_env_var = "HTFORCEDELETE";
+const char *colors_env_var = "HTCOLORS";
+
+static int use_colors = 1;
 
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
@@ -110,13 +113,13 @@ Day *day_exists(Habit *habit, time_t time);
 void day_sort(Day arr[], int len);
 char *day_mark_str(int day_mark);
 void switch_day_mark(Day *day);
-void print_help();
+void print_help(int no_default);
 void print_version();
 int file_exists(char *filename);
 void graph_cell_print(int cell);
 void fillout_skipped_days(Habit *habit);
 void habit_display_as_list(Habit *habit, int is_default);
-void habit_display_graph(Habit *habit, int is_default, int custom_width);
+void habit_display_graph(Habit *habit, int is_default, int width, int graph_year);
 
 int
 main(int argc, char *argv[]) {
@@ -136,13 +139,19 @@ main(int argc, char *argv[]) {
    }
    free(habit_path);
 
+   char *colors_env_var_value = getenv(colors_env_var);
+   int colors_env_var_exists = (colors_env_var_value != NULL) ?
+      !strcmp(colors_env_var_value, "0") : 0;
+   if(colors_env_var_exists) {
+      use_colors = 0;
+   }
 
    if (argc <= 1) {
       Habit habit = {0};
       habit.name = NULL;
       char *default_path = default_habit_path_make();
       if (file_exists(default_path)) {
-         print_help();
+         print_help(1);
          free(default_path);
          return 0;
       }
@@ -191,7 +200,9 @@ main(int argc, char *argv[]) {
             habit.stats.creation_timestamp = time(NULL);
 
             if (habit_file_create(&habit)) {
-               fprintf(stderr, "Habit %s already exists\n", habit.name);
+               if (use_colors) fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                                       " already exists\n", habit.name);
+               else fprintf(stderr, "Habit %s already exists\n", habit.name);
             } else {
                printf("Habit %s created\n", habit.name);
             }
@@ -202,14 +213,20 @@ main(int argc, char *argv[]) {
             habit.name = optarg;
             filename = habit_make_filename(&habit);
             if (file_exists(filename)) {
-               fprintf(stderr, "%s does not exist\n", habit.name);
+               if (use_colors) fprintf(stderr, ANSI_YEL "%s" ANSI_RESET
+                                       " does not exist\n", habit.name);
+               else fprintf(stderr, "%s does not exist\n", habit.name);
             } else {
                char choice = 0;
                printf("Are you sure you want to delete this habit?: [y/N] ");
                scanf("%c", &choice);
                if (choice == 'y' || choice == 'Y') {
                   if (!remove(filename))
-                     printf("%s has been deleted successfully\n", habit.name);
+                     if (use_colors)
+                        printf(ANSI_YEL "%s" ANSI_RESET 
+                               " has been deleted successfully\n", habit.name);
+                     else
+                        printf("%s has been deleted successfully\n", habit.name);
                   else
                      fprintf(stderr, "failed to delete %s\n", habit.name);
 
@@ -218,9 +235,14 @@ main(int argc, char *argv[]) {
                       && !strcmp(optarg, default_habit_name)) {
                      char *default_habit_path = default_habit_path_make();
                      if (!remove(default_habit_path)) {
-                        printf(ANSI_YEL "%s" ANSI_RESET
-                           " was default, default habit is no longer set\n",
-                           habit.name);
+                        if (use_colors) {
+                           printf(ANSI_YEL "%s" ANSI_RESET
+                              " was default, default habit is no longer set\n",
+                              habit.name);
+                        } else {
+                           printf("%s was default, default habit is no longer set\n",
+                              habit.name);
+                        }
                      } else {
                         printf("failed to unset default habit\n");
                      }
@@ -232,7 +254,6 @@ main(int argc, char *argv[]) {
             }
          } break;
          case HABIT_LIST_ARG: {
-            // TODO: segfaults when no habits exist
             struct dirent *de;
             char *habit_path = habitpath(0);
             DIR *dr = opendir(habit_path);
@@ -285,11 +306,17 @@ main(int argc, char *argv[]) {
                                     lh[lhc-1].
                                     days[lh[lhc-1].days_count-1].marked));
                         printf("\n");
-                        printf("   Days "
-                               ANSI_GRN "completed: %d; "
-                               ANSI_RED "failed: %d; ",
-                                  lh[lhc-1].stats.completed_days,
-                                  lh[lhc-1].stats.failed_days);
+                        if (use_colors) {
+                           printf("   Days "
+                                  ANSI_GRN "completed: %d; "
+                                  ANSI_RED "failed: %d; ",
+                                     lh[lhc-1].stats.completed_days,
+                                     lh[lhc-1].stats.failed_days);
+                        } else {
+                           printf("   Days completed: %d; failed: %d; ",
+                                   lh[lhc-1].stats.completed_days,
+                                   lh[lhc-1].stats.failed_days);
+                        }
                      } else printf("\n   ");
                      struct tm *ti = localtime(
                         &lh[lhc-1].stats.creation_timestamp);
@@ -300,9 +327,9 @@ main(int argc, char *argv[]) {
                      free(lh[lhc-1].name);
                      free(lh[lhc-1].days);
                   }
-                  free(lh);
-                  free(habit_path);
-                  closedir(dr);
+               free(lh);
+               free(habit_path);
+               closedir(dr);
             } 
          } break;
          case HABIT_SELECT_DEFAULT_ARG: {
@@ -311,12 +338,20 @@ main(int argc, char *argv[]) {
                habit.name = optarg;
                char *habit_path = habit_make_filename(&habit);
                if (file_exists(habit_path)) {
-                  fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET" doesn't exist\n", habit.name);
+                  if (use_colors) fprintf(stderr, "Habit " ANSI_YEL "%s" 
+                                          ANSI_RESET " doesn't exist\n", 
+                                          habit.name);
+                  else fprintf(stderr, "Habit %s doesn't exist\n", habit.name);
                } else if (default_habit_write(&habit)) {
                   fprintf(stderr, "Unable to write a default habit\n");
                } else {
-                  printf("%s has been selected as a default habit\n", 
-                         habit.name);
+                  if (use_colors) 
+                     printf(ANSI_YEL "%s" ANSI_RESET 
+                            " has been selected as a default habit\n", 
+                            habit.name);
+                  else
+                     printf("%s has been selected as a default habit\n", 
+                            habit.name);
                }
                free(habit_path);
             } else {
@@ -330,13 +365,20 @@ main(int argc, char *argv[]) {
             } else if (default_path != NULL) {
                char *default_habit_path_file = default_habit_path_make();
                remove(default_habit_path_file);
+               if (use_colors) {
+                  printf("Default habit " ANSI_YEL "%s" 
+                         ANSI_RESET " has been unselected\n", default_path);
+               }
+               else {
+                  printf("Default habit %s has been unselected\n", 
+                         default_path);
+               }
                free(default_habit_path_file);
                free(default_path);
-               printf("Default habit has been unselected\n");
             }
          } break;
          case PRINT_HELP_ARG: {
-            print_help();
+            print_help(0);
          } break;
          case PRINT_VERSION_ARG: {
             print_version();
@@ -422,8 +464,11 @@ main(int argc, char *argv[]) {
                struct tm *ti = localtime(&new_day_timestamp);
                if (habits[current_habit].days_count == 0) {
                   habit_add_day(&habits[current_habit], new_day_timestamp, DAY_COMPLETE);
-                  printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET": %d.%02d.%02d: %s\n",
-                         habits[current_habit].name,
+                  if (use_colors)
+                     printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
+                  else
+                     printf("Habit \"%s\"", habits[current_habit].name);
+                  printf(": %d.%02d.%02d: %s\n",
                          ti->tm_year + 1900,
                          ti->tm_mon + 1,
                          ti->tm_mday,
@@ -434,8 +479,11 @@ main(int argc, char *argv[]) {
                   if (existing_day != NULL) {
                      int temp = existing_day->marked;
                      switch_day_mark(existing_day);
-                     printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET ": %d.%02d.%02d: %s -> %s\n", 
-                            habits[current_habit].name,
+                     if (use_colors)
+                        printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
+                     else
+                        printf("Habit \"%s\"", habits[current_habit].name);
+                     printf(": %d.%02d.%02d: %s -> %s\n", 
                             ti->tm_year + 1900,
                             ti->tm_mon + 1,
                             ti->tm_mday,
@@ -447,16 +495,23 @@ main(int argc, char *argv[]) {
                            &habits[current_habit],
                            new_day_timestamp,
                            DAY_COMPLETE);
-                        printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET": %d.%02d.%02d: %s\n",
-                               habits[current_habit].name,
+                        if (use_colors) {
+                           printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
+                                  habits[current_habit].name);
+                        } else {
+                           printf("Habit \"%s\"", habits[current_habit].name);
+                        }
+                        printf(": %d.%02d.%02d: %s\n",
                                ti->tm_year + 1900,
                                ti->tm_mon + 1,
                                ti->tm_mday,
                                day_mark_str(DAY_COMPLETE));
                      } else {
-                        printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET
-                           ": the provided date %d.%02d.%02d is bigger than today\n",
-                           habits[current_habit].name,
+                        if (use_colors)
+                           printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
+                        else
+                           printf("Habit \"%s\"", habits[current_habit].name);
+                        printf( ": the provided date %d.%02d.%02d is bigger than today\n",
                            ti->tm_year + 1900,
                            ti->tm_mon + 1,
                            ti->tm_mday);
@@ -495,15 +550,21 @@ main(int argc, char *argv[]) {
             }
             if (!is_preloaded) {
                if (habit_file_read(&habit)) {
-                  fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
-                          " doesn't exist\n", optarg);
+                  if (use_colors)
+                     fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                             " doesn't exist\n", optarg);
+                  else
+                     fprintf(stderr, "Habit %s doesn't exist\n", optarg);
                }
                else {
                   habit_display_as_list(&habit, is_default);
                   if (!is_preloaded) free(habit.days);
-               } 
+               }
                if (is_default) free(habit.name);
             }
+         } break;
+         case GRAPH_WIDTH_ARG: {
+            graph_width = atoi(optarg);
          } break;
          case HABIT_DISPLAY_ARG: {
             Habit habit = {0};
@@ -524,11 +585,14 @@ main(int argc, char *argv[]) {
             }
             if (!is_preloaded)  {
                if (habit_file_read(&habit)) {
-                  fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
-                          " doesn't exist\n", optarg);
+                  if (use_colors)
+                     fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                             " doesn't exist\n", optarg);
+                  else
+                     fprintf(stderr, "Habit %s doesn't exist\n", optarg);
                }
                else {
-                  habit_display_graph(&habit, is_default, 30);
+                  habit_display_graph(&habit, is_default, graph_width, graph_year);
                   if (!is_preloaded) free(habit.days);
                }
                if (is_default) free(habit.name);
@@ -553,7 +617,7 @@ main(int argc, char *argv[]) {
                   habit.name = default_habit_read();
                   if (habit.name != NULL) {
                      habit_file_read(&habit);
-                     habit_display_graph(&habit, 1, 30);
+                     habit_display_graph(&habit, 1, graph_width, graph_year);
                      free(habit.days);
                   } else {
                      fprintf(stderr, "Default habit has not been set, please provide a habit name\n");
@@ -825,33 +889,37 @@ day_sort(Day arr[], int len) {
 }
 
 void
-print_help() {
+print_help(int no_default) {
    printf(
       " === ht - CLI Habit Tracker === \n"
-      "ht -h : print this message\n"
-      "ht -a <name> : add new habit\n"
-      "ht -r <name> : remove habit\n"
-      "ht -l        : list habits\n"
-      "ht -s <name> : select habit as a default one\n"
-      "ht -S : deselect default habit (if it was selected beforehand)\n"
-      "ht : mark default habit as completed for today\n"
-      "     (running this once again will mark the habit as failed)\n"
-      "     (running this once more will delete this day from a habit)\n"
+      "             ht -h : print this message\n"
+      "      ht -a <name> : add new habit\n"
+      "      ht -r <name> : remove habit\n"
+      "             ht -l : list habits\n"
+      "      ht -s <name> : select habit as a default one\n"
+      "             ht -S : deselect default habit (if it was selected beforehand)\n"
+      "                ht : mark default habit as completed for today\n"
+      "                     running this once again will mark the habit as failed)\n"
+      "                     running this once more will delete this day from a habit)\n"
       "ht -d <YYYY.MM.DD> : mark default habit as completed for any day before today\n"
-      "     (running this once again will unmark the habit)\n"
-      "ht -H <habit> : mark any habit that isn't default\n"
+      "                     running this once again will unmark the habit)\n"
+      "     ht -H <habit> : mark any habit that isn't default\n"
       "ht -H <habit> -d <YYYY.MM.DD> : mark any day of the habit\n"
-      "ht -c : display graph with a default habit\n"
-      "ht -c <habit> : display graph with a selected habit\n"
-      "   -w : specify the width of the graph (should be specified before -c) <TBD>\n"
-      "   -y : specify the year of the graph (should be specified before -c) <TBD>\n"
-      "ht -C : display list of days of a default habit\n"
-      "ht -C <habit> : display list of days of a selected habit\n");
+      "             ht -c : display graph with a default habit\n"
+      "     ht -c <habit> : display graph with a selected habit\n"
+      "         -w <1-39> : specify the width of the graph (should be specified before -c)\n"
+      "         -y <year> : specify the year of the graph (should be specified before -c) <TBD>\n"
+      "             ht -C : display list of days of a default habit\n"
+      "     ht -C <habit> : display list of days of a selected habit\n");
    printf("\nUse $%s to select habit path\n", habit_folder_path_env_var);
    printf("Set $%s to \"1\" to use nerd font symbols in the -c graph\n", nerd_font_var);
    printf("<TBD> You can set custom width of the graph with $%s\n", graph_width_env_var);
    printf("<TBD> You can disable remove confirmation with $%s\n", force_delete_env_var);
-   printf("This help message is displayed when no default habit was selected\n");
+   printf("\nIf you haven't been marking days for some time, the next time you\n"
+          "mark today, those previous days will be unmarked as failed.\n"
+          "To change this behaviour set $%s to \"0\"\n", mark_prev_unmarked_days_as_failed_env_var);
+   if (no_default)
+      printf("This help message is displayed when no default habit was selected\n");
    print_version();
 }
 
@@ -921,17 +989,32 @@ calc_stats(Habit *habit) {
 
 char*
 day_mark_str(int day_mark) {
-   switch(day_mark) {
-      case DAY_COMPLETE: {
-         return ANSI_GRN "DONE" ANSI_RESET;
-      } break;
-      case DAY_FAILED: {
-         return ANSI_RED "fail" ANSI_RESET;
-      } break;
-      case DAY_UNMARKED: {
-         return "deleted";
-      } break;
-      default: return NULL;
+   if (use_colors) {
+      switch(day_mark) {
+         case DAY_COMPLETE: {
+            return ANSI_GRN "DONE" ANSI_RESET;
+         } break;
+         case DAY_FAILED: {
+            return ANSI_RED "fail" ANSI_RESET;
+         } break;
+         case DAY_UNMARKED: {
+            return ANSI_BLK "deleted" ANSI_RESET;
+         } break;
+         default: return NULL;
+      }
+   } else {
+      switch(day_mark) {
+         case DAY_COMPLETE: {
+            return "DONE" ;
+         } break;
+         case DAY_FAILED: {
+            return "fail";
+         } break;
+         case DAY_UNMARKED: {
+            return "deleted";
+         } break;
+         default: return NULL;
+      }
    }
 }
 
@@ -945,24 +1028,48 @@ graph_cell_print(int cell) {
    char *nerd_font = getenv(nerd_font_var);
    int c = (nerd_font != NULL) ? strcmp(nerd_font, "1") : 1;
    if (!c) {
-      switch (cell) {
-         case DAY_COMPLETE: printf(ANSI_GRN " " ANSI_RESET); break;
-         case DAY_FAILED:   printf(ANSI_RED " " ANSI_RESET); break;
-         case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
-         case GRAPH_BLANK_ODD:
-            printf(ANSI_BLK " " ANSI_RESET); break;
-         case GRAPH_BLANK_EVEN:
-            printf(ANSI_BLK " " ANSI_RESET); break;
+      if (use_colors) {
+         switch (cell) {
+            case DAY_COMPLETE: printf(ANSI_GRN " " ANSI_RESET); break;
+            case DAY_FAILED:   printf(ANSI_RED " " ANSI_RESET); break;
+            case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
+            case GRAPH_BLANK_ODD:
+               printf(ANSI_BLK " " ANSI_RESET); break;
+            case GRAPH_BLANK_EVEN:
+               printf(ANSI_BLK " " ANSI_RESET); break;
+         }
+      } else {
+         switch (cell) {
+            case DAY_COMPLETE: printf(" "); break;
+            case DAY_FAILED:   printf(" "); break;
+            case DAY_UNMARKED: printf("  "); break;
+            case GRAPH_BLANK_ODD:
+               printf("--"); break;
+            case GRAPH_BLANK_EVEN:
+               printf("--"); break;
+         }
       }
    } else {
-      switch (cell) {
-         case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
-         case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
-         case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
-         case GRAPH_BLANK_ODD:
-            printf(ANSI_BGIBLK "  " ANSI_RESET); break;
-         case GRAPH_BLANK_EVEN:
-            printf(ANSI_BGGRY "  " ANSI_RESET); break;
+      if (use_colors) {
+         switch (cell) {
+            case DAY_COMPLETE: printf(ANSI_BGGRN "  " ANSI_RESET); break;
+            case DAY_FAILED:   printf(ANSI_BGRED "  " ANSI_RESET); break;
+            case DAY_UNMARKED: printf(ANSI_RESET "  " ANSI_RESET); break;
+            case GRAPH_BLANK_ODD:
+               printf(ANSI_BGIBLK "  " ANSI_RESET); break;
+            case GRAPH_BLANK_EVEN:
+               printf(ANSI_BGGRY "  " ANSI_RESET); break;
+         }
+      } else {
+         switch (cell) {
+            case DAY_COMPLETE: printf("[]"); break;
+            case DAY_FAILED:   printf("><"); break;
+            case DAY_UNMARKED: printf("  "); break;
+            case GRAPH_BLANK_ODD:
+               printf("--"); break;
+            case GRAPH_BLANK_EVEN:
+               printf("--"); break;
+         }
       }
    }
 }
@@ -987,20 +1094,19 @@ fillout_skipped_days(Habit *habit) {
 }
 
 void
-habit_display_graph(Habit *habit, int is_default, int custom_width) {
-   printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
+habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
+   if (use_colors) printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
+   else printf("Habit: %s", habit->name);
    if (is_default) printf(" (default)");
    printf("\n");
-   int is_custom = 0;
    int graph[GRAPH_XMAX][GRAPH_YMAX] = {0};
    int last_column = 0;
    int pattern = 0;
    int graph_fillout = -1;
    int dc = habit->days_count-1;
 
-   time_t now = time(NULL);
-   time_t graph_limit = now-86400*GRAPH_XMAX*GRAPH_YMAX;
    time_t t = time(NULL);
+   time_t graph_limit = t-86400*GRAPH_XMAX*GRAPH_YMAX;
    struct tm *ti = localtime(&t);
    int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
    offset = 7 - offset;
@@ -1014,6 +1120,14 @@ habit_display_graph(Habit *habit, int is_default, int custom_width) {
       int months_count = 0;
 
       int compare = 0;
+      if (graph_year) {
+         for (int i = habit->days_count-1; i >= 0; i--) {
+            ti = localtime(&habit->days[i].timestamp);
+            if (ti->tm_year+1900 > graph_year) {
+               if (dc > 0) dc--;
+            }
+         }
+      }
       for (int y = GRAPH_YMAX-1; y >= 0; y--) {
          for (int x = GRAPH_XMAX-1; x >= 0; x--) {
             if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
@@ -1026,12 +1140,12 @@ habit_display_graph(Habit *habit, int is_default, int custom_width) {
                      if (habit->days[dc].marked == DAY_COMPLETE
                         || habit->days[dc].marked == DAY_FAILED) {
                         graph[x][y] = habit->days[dc].marked;
-                        if (!is_custom && 
+                        if (!width && 
                            date_compare(graph_limit, habit->days[dc].timestamp)
                            == 1) {
                            dc = -1;
                            graph_fillout = 10;
-                        } else if (!is_custom && dc == 0) {
+                        } else if (!width && dc == 0) {
                            dc = -1; 
                            graph_fillout = 10;
                         }
@@ -1083,8 +1197,8 @@ habit_display_graph(Habit *habit, int is_default, int custom_width) {
          } else if (graph_fillout == 0) {
             break;
          } else {
-            if (is_custom) {
-               if (y <= GRAPH_YMAX-custom_width) {
+            if (width) {
+               if (y <= GRAPH_YMAX-width) {
                   last_column = y;
                   break;
                }
@@ -1140,10 +1254,17 @@ habit_display_graph(Habit *habit, int is_default, int custom_width) {
    if (habit->stats.completed_days == 0
       && habit->stats.failed_days == 0)
       calc_stats(habit);
-   printf("Days total: %d;" ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n", 
-          habit->days_count,
-          habit->stats.completed_days,
-          habit->stats.failed_days);
+   printf("Days total: %d;",
+          habit->days_count);
+   if (use_colors) {
+      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n", 
+             habit->stats.completed_days,
+             habit->stats.failed_days);
+   } else {
+      printf(" completed: %d; failed %d;\n", 
+             habit->stats.completed_days,
+             habit->stats.failed_days);
+   }
    ti = localtime(&habit->stats.creation_timestamp);
    printf(ANSI_RESET "Created at: %d.%02d.%02d\n", 
           ti->tm_year + 1900,
@@ -1153,37 +1274,51 @@ habit_display_graph(Habit *habit, int is_default, int custom_width) {
 
 void
 habit_display_as_list(Habit *habit, int is_default) {
-   printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
+   if (use_colors) printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
+   else printf("Habit: %s", habit->name);
    if (is_default) printf(" (default)");
    printf("\n");
    if (habit->days_count > 0) {
       for (int i = 0; i < habit->days_count; i++) {
          struct tm *timeinfo = localtime(&habit->days[i].timestamp);
-         switch(habit->days[i].marked) {
-            case DAY_COMPLETE: {
-               printf(ANSI_GRN);
-            } break;
-            case DAY_FAILED: {
-               printf(ANSI_RED);
-            } break;
-            case DAY_UNMARKED: {
-               printf(ANSI_BLK);
-            } break;
+         if (use_colors) {
+            switch(habit->days[i].marked) {
+                  case DAY_COMPLETE: {
+                     printf(ANSI_GRN);
+                  } break;
+                  case DAY_FAILED: {
+                     printf(ANSI_RED);
+                  } break;
+                  case DAY_UNMARKED: {
+                     printf(ANSI_BLK);
+                  } break;
+               }
          }
-         printf("day: %d.%02d.%02d %s" ANSI_RESET "\n",
+         printf("day: %d.%02d.%02d %s",
                 timeinfo->tm_year + 1900,
                 timeinfo->tm_mon + 1,
                 timeinfo->tm_mday,
                 day_mark_str(habit->days[i].marked));
+         if (use_colors) {
+            printf(ANSI_RESET);
+         }
+         printf("\n");
       }
    }
    if (habit->stats.completed_days == 0
       && habit->stats.failed_days == 0)
       calc_stats(habit);
-   printf("Days total: %d;" ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n", 
-          habit->days_count,
-          habit->stats.completed_days,
-          habit->stats.failed_days);
+   printf("Days total: %d;",
+          habit->days_count);
+   if (use_colors) {
+      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n", 
+             habit->stats.completed_days,
+             habit->stats.failed_days);
+   } else {
+      printf(" completed: %d; failed %d;\n", 
+             habit->stats.completed_days,
+             habit->stats.failed_days);
+   }
    struct tm *ti = localtime(&habit->stats.creation_timestamp);
    printf(ANSI_RESET "Created at: %d.%02d.%02d\n", 
           ti->tm_year + 1900,
