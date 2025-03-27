@@ -18,6 +18,7 @@
 //       completed in a day)
 // TODO: Add frequency to the habit (i.e. once per day once per week, once per
 //       month, etc.)
+// TODO: Add force delete
 
 // A Habit Tracker
 //
@@ -1266,7 +1267,7 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
              habit->stats.failed_days);
    }
    ti = localtime(&habit->stats.creation_timestamp);
-   printf(ANSI_RESET "Created at: %d.%02d.%02d\n", 
+   printf("Created at: %d.%02d.%02d\n", 
           ti->tm_year + 1900,
           ti->tm_mon + 1,
           ti->tm_mday);
@@ -1320,7 +1321,7 @@ habit_display_as_list(Habit *habit, int is_default) {
              habit->stats.failed_days);
    }
    struct tm *ti = localtime(&habit->stats.creation_timestamp);
-   printf(ANSI_RESET "Created at: %d.%02d.%02d\n", 
+   printf("Created at: %d.%02d.%02d\n", 
           ti->tm_year + 1900,
           ti->tm_mon + 1,
           ti->tm_mday);
