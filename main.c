@@ -29,6 +29,14 @@
 extern int errno;
 extern char *optarg;
 
+#define DATE_FORMAT_ISO8601 0
+#define DATE_FORMAT_EU 1
+#define DATE_FORMAT_US 2
+
+#define DATE_FORMAT_ISO8601_STR "YYYY.MM.DD"
+#define DATE_FORMAT_EU_STR "DD.MM.YYYY"
+#define DATE_FORMAT_US_STR "MM.DD.YYYY"
+
 #define HABIT_CREATE_ARG 'a'
 #define HABIT_REMOVE_ARG 'r'
 #define HABIT_LIST_ARG 'l'
@@ -96,6 +104,8 @@ const char *force_delete_env_var = "HTFORCEDELETE";
 const char *colors_env_var = "HTCOLORS";
 
 static int use_colors = 1;
+static int date_format = DATE_FORMAT_ISO8601;
+static char *date_str_return_value;
 
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
@@ -121,6 +131,7 @@ void graph_cell_print(int cell);
 void fillout_skipped_days(Habit *habit);
 void habit_display_as_list(Habit *habit, int is_default);
 void habit_display_graph(Habit *habit, int is_default, int width, int graph_year);
+char *date_str(time_t *time);
 
 int
 main(int argc, char *argv[]) {
@@ -146,6 +157,21 @@ main(int argc, char *argv[]) {
    if(colors_env_var_exists) {
       use_colors = 0;
    }
+
+   char *date_format_env_var_value = getenv(date_format_env_var);
+   if (date_format_env_var_value != NULL) {
+      if (!strcmp(DATE_FORMAT_ISO8601_STR, date_format_env_var_value))
+         date_format = DATE_FORMAT_ISO8601;
+      if (!strcmp(DATE_FORMAT_US_STR, date_format_env_var_value))
+         date_format = DATE_FORMAT_US;
+      if (!strcmp(DATE_FORMAT_EU_STR, date_format_env_var_value))
+         date_format = DATE_FORMAT_EU;
+   } else {
+      date_format = DATE_FORMAT_ISO8601;
+   }
+   date_str_return_value = calloc(11, sizeof(char));
+
+   printf("%d\n", date_format);
 
    if (argc <= 1) {
       Habit habit = {0};
@@ -214,8 +240,9 @@ main(int argc, char *argv[]) {
             habit.name = optarg;
             filename = habit_make_filename(&habit);
             if (file_exists(filename)) {
-               if (use_colors) fprintf(stderr, ANSI_YEL "%s" ANSI_RESET
-                                       " does not exist\n", habit.name);
+               if (use_colors) 
+                  fprintf(stderr, ANSI_YEL "%s" ANSI_RESET
+                          " does not exist\n", habit.name);
                else fprintf(stderr, "%s does not exist\n", habit.name);
             } else {
                char choice = 0;
@@ -310,7 +337,7 @@ main(int argc, char *argv[]) {
                         if (use_colors) {
                            printf("   Days "
                                   ANSI_GRN "completed: %d; "
-                                  ANSI_RED "failed: %d; ",
+                                  ANSI_RED "failed: %d; " ANSI_RESET,
                                      lh[lhc-1].stats.completed_days,
                                      lh[lhc-1].stats.failed_days);
                         } else {
@@ -321,10 +348,8 @@ main(int argc, char *argv[]) {
                      } else printf("\n   ");
                      struct tm *ti = localtime(
                         &lh[lhc-1].stats.creation_timestamp);
-                     printf(ANSI_RESET "created %d.%02d.%02d\n", 
-                            ti->tm_year + 1900,
-                            ti->tm_mon + 1,
-                            ti->tm_mday);
+                     printf("Created at: %s\n",
+                            date_str(&lh[lhc-1].stats.creation_timestamp));
                      free(lh[lhc-1].name);
                      free(lh[lhc-1].days);
                   }
@@ -462,17 +487,13 @@ main(int argc, char *argv[]) {
                   fprintf(stderr, "Please provide a custom day\n");
                }
 
-               struct tm *ti = localtime(&new_day_timestamp);
                if (habits[current_habit].days_count == 0) {
                   habit_add_day(&habits[current_habit], new_day_timestamp, DAY_COMPLETE);
                   if (use_colors)
                      printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
                   else
                      printf("Habit \"%s\"", habits[current_habit].name);
-                  printf(": %d.%02d.%02d: %s\n",
-                         ti->tm_year + 1900,
-                         ti->tm_mon + 1,
-                         ti->tm_mday,
+                  printf(": %s: %s\n", date_str(&new_day_timestamp),
                          day_mark_str(DAY_COMPLETE));
                } else {
                   Day *existing_day = day_exists(&habits[current_habit], 
@@ -484,10 +505,7 @@ main(int argc, char *argv[]) {
                         printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
                      else
                         printf("Habit \"%s\"", habits[current_habit].name);
-                     printf(": %d.%02d.%02d: %s -> %s\n", 
-                            ti->tm_year + 1900,
-                            ti->tm_mon + 1,
-                            ti->tm_mday,
+                     printf(": %s: %s -> %s\n", date_str(&new_day_timestamp),
                             day_mark_str(temp),
                             day_mark_str(existing_day->marked));
                   } else {
@@ -502,20 +520,16 @@ main(int argc, char *argv[]) {
                         } else {
                            printf("Habit \"%s\"", habits[current_habit].name);
                         }
-                        printf(": %d.%02d.%02d: %s\n",
-                               ti->tm_year + 1900,
-                               ti->tm_mon + 1,
-                               ti->tm_mday,
+                        printf(": %s: %s\n",
+                               date_str(&new_day_timestamp),
                                day_mark_str(DAY_COMPLETE));
                      } else {
                         if (use_colors)
                            printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
                         else
                            printf("Habit \"%s\"", habits[current_habit].name);
-                        printf( ": the provided date %d.%02d.%02d is bigger than today\n",
-                           ti->tm_year + 1900,
-                           ti->tm_mon + 1,
-                           ti->tm_mday);
+                        printf( ": the provided date %s is bigger than today\n",
+                               date_str(&new_day_timestamp));
                      }
 
                      if (habits[current_habit].
@@ -600,6 +614,7 @@ main(int argc, char *argv[]) {
             }
          } break;
          case '?': {
+         // TODO: make errors for each and every argument
             switch(optopt) {
                case HABIT_DISPLAY_AS_LIST_ARG: {
                   Habit habit = {0};
@@ -658,6 +673,8 @@ main(int argc, char *argv[]) {
 
    if (default_path != NULL) free(default_path);
    free(habits);
+
+   free(date_str_return_value);
 
    return 0;
 }
@@ -1258,7 +1275,7 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
    printf("Days total: %d;",
           habit->days_count);
    if (use_colors) {
-      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n", 
+      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n" ANSI_RESET, 
              habit->stats.completed_days,
              habit->stats.failed_days);
    } else {
@@ -1266,11 +1283,7 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
              habit->stats.completed_days,
              habit->stats.failed_days);
    }
-   ti = localtime(&habit->stats.creation_timestamp);
-   printf("Created at: %d.%02d.%02d\n", 
-          ti->tm_year + 1900,
-          ti->tm_mon + 1,
-          ti->tm_mday);
+   printf("Created at: %s\n", date_str(&habit->stats.creation_timestamp));
 }
 
 void
@@ -1295,10 +1308,8 @@ habit_display_as_list(Habit *habit, int is_default) {
                   } break;
                }
          }
-         printf("day: %d.%02d.%02d %s",
-                timeinfo->tm_year + 1900,
-                timeinfo->tm_mon + 1,
-                timeinfo->tm_mday,
+         printf("day: %s %s",
+                date_str(&habit->days[i].timestamp),
                 day_mark_str(habit->days[i].marked));
          if (use_colors) {
             printf(ANSI_RESET);
@@ -1312,7 +1323,7 @@ habit_display_as_list(Habit *habit, int is_default) {
    printf("Days total: %d;",
           habit->days_count);
    if (use_colors) {
-      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n", 
+      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n" ANSI_RESET, 
              habit->stats.completed_days,
              habit->stats.failed_days);
    } else {
@@ -1320,9 +1331,24 @@ habit_display_as_list(Habit *habit, int is_default) {
              habit->stats.completed_days,
              habit->stats.failed_days);
    }
-   struct tm *ti = localtime(&habit->stats.creation_timestamp);
-   printf("Created at: %d.%02d.%02d\n", 
-          ti->tm_year + 1900,
-          ti->tm_mon + 1,
-          ti->tm_mday);
+   printf("Created at: %s\n", date_str(&habit->stats.creation_timestamp));
+}
+
+char *date_str(time_t *time) {
+   struct tm *ti = localtime(time);
+   int year = ti->tm_year + 1900;
+   int mon = ti->tm_mon + 1;
+   int day = ti->tm_mday;
+   switch (date_format) {
+      case DATE_FORMAT_ISO8601: {
+         sprintf(date_str_return_value, "%d.%02d.%02d", year, mon, day);
+      } break;
+      case DATE_FORMAT_EU: {
+         sprintf(date_str_return_value, "%02d.%02d.%d", day, mon, year);
+      } break;
+      case DATE_FORMAT_US: {
+         sprintf(date_str_return_value, "%02d.%02d.%d", mon, day, year);
+      } break;
+   }
+   return date_str_return_value;
 }
