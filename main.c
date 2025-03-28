@@ -7,18 +7,17 @@
 #include <dirent.h>
 #include <unistd.h>
 
-// TODO: If there are no habits `ht -l` will segfault if `ht` was compiled
-//       with `tcc`.
-// TODO: support for multiple date formats (YYYY.MM.DD/DD.MM.YYYY/MM.DD.YYYY)
-//       by the means of env variable
+// TODO: add -y to the -c argument to see a specific year
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
-// TODO: add -y to the -c argument to allow to see a specific year
+
 // TODO: Add quantity to the habit (i.e. how many times the habit needs to be
 //       completed in a day)
 // TODO: Add frequency to the habit (i.e. once per day once per week, once per
 //       month, etc.)
-// TODO: Add force delete
+
+// TODO: If there are no habits `ht -l` will segfault if `ht` was compiled
+//       with `tcc`.
 
 // A Habit Tracker
 //
@@ -30,43 +29,44 @@ extern int errno;
 extern char *optarg;
 
 #define DATE_FORMAT_ISO8601 0
-#define DATE_FORMAT_EU 1
-#define DATE_FORMAT_US 2
+#define DATE_FORMAT_EU      1
+#define DATE_FORMAT_US      2
 
 #define DATE_FORMAT_ISO8601_STR "YYYY.MM.DD"
-#define DATE_FORMAT_EU_STR "DD.MM.YYYY"
-#define DATE_FORMAT_US_STR "MM.DD.YYYY"
+#define DATE_FORMAT_EU_STR      "DD.MM.YYYY"
+#define DATE_FORMAT_US_STR      "MM.DD.YYYY"
 
-#define HABIT_CREATE_ARG 'a'
-#define HABIT_REMOVE_ARG 'r'
-#define HABIT_LIST_ARG 'l'
-#define HABIT_SELECT_DEFAULT_ARG 's'
+#define HABIT_CREATE_ARG           'a'
+#define HABIT_REMOVE_ARG           'r'
+#define HABIT_LIST_ARG             'l'
+#define HABIT_SELECT_DEFAULT_ARG   's'
 #define HABIT_DESELECT_DEFAULT_ARG 'S'
-#define HABIT_DISPLAY_ARG 'c'
-#define HABIT_DISPLAY_AS_LIST_ARG 'C'
-#define HABIT_NON_DEFAULT_ARG 'H'
-#define HABIT_CUSTOM_DAY_ARG 'd'
-#define PRINT_HELP_ARG 'h'
-#define PRINT_VERSION_ARG 'v'
-#define GRAPH_WIDTH_ARG 'w'
-#define GRAPH_YEAR_ARG 'y'
-#define FORCE_DELETE_ARG 'f'
+#define HABIT_DISPLAY_ARG          'c'
+#define HABIT_DISPLAY_AS_LIST_ARG  'C'
+#define HABIT_NON_DEFAULT_ARG      'H'
+#define HABIT_CUSTOM_DAY_ARG       'd'
+#define PRINT_HELP_ARG             'h'
+#define PRINT_VERSION_ARG          'v'
+#define GRAPH_WIDTH_ARG            'w'
+#define GRAPH_YEAR_ARG             'y'
+#define FORCE_DELETE_ARG           'f'
 
 #define ALLARGS "a:r:ls:Sc:C:H:hvy:w:d:f"
 
-#define ANSI_BLK "\e[0;30m"
-#define ANSI_RED "\e[0;31m"
-#define ANSI_GRN "\e[0;32m"
-#define ANSI_YEL "\e[0;33m"
-#define ANSI_BGRED "\e[41m"
-#define ANSI_BGGRN "\e[42m"
+#define ANSI_BLK    "\e[0;30m"
+#define ANSI_RED    "\e[0;31m"
+#define ANSI_GRN    "\e[0;32m"
+#define ANSI_YEL    "\e[0;33m"
+#define ANSI_BGRED  "\e[41m"
+#define ANSI_BGGRN  "\e[42m"
 #define ANSI_BGIBLK "\e[0;100m"
-#define ANSI_BGGRY "\e[40m"
-#define ANSI_RESET "\e[0m"
+#define ANSI_BGGRY  "\e[40m"
+#define ANSI_RESET  "\e[0m"
+
 #define GRAPH_BLANK_EVEN 2
-#define GRAPH_BLANK_ODD 3
-#define GRAPH_XMAX 7
-#define GRAPH_YMAX 39
+#define GRAPH_BLANK_ODD  3
+#define GRAPH_XMAX       7
+#define GRAPH_YMAX       39
 
 #define DAY_UNMARKED 0
 #define DAY_COMPLETE 1
@@ -96,7 +96,7 @@ const char *default_habit_filename = "default";
 const char *default_habit_path = "/.local/share/ht";
 
 const char *habit_folder_path_env_var = "HTDIR";
-const char *date_format_env_var = "HTFORMAT";
+const char *date_format_env_var = "HTDATEFORMAT";
 const char *nerd_font_var = "HTNERD";
 const char *mark_prev_unmarked_days_as_failed_env_var = "HTUNMARKEDTOFAIL";
 const char *graph_width_env_var = "HTGRAPHWIDTH";
@@ -104,6 +104,7 @@ const char *force_delete_env_var = "HTFORCEDELETE";
 const char *colors_env_var = "HTCOLORS";
 
 static int use_colors = 1;
+static int force_delete = 0;
 static int date_format = DATE_FORMAT_ISO8601;
 static char *date_str_return_value;
 
@@ -171,7 +172,12 @@ main(int argc, char *argv[]) {
    }
    date_str_return_value = calloc(11, sizeof(char));
 
-   printf("%d\n", date_format);
+   char *force_delete_env_var_value = getenv(force_delete_env_var);
+   int force_delete_env_var_exists = (force_delete_env_var_value != NULL) ?
+      !strcmp(force_delete_env_var_value, "1") : 0;
+   if(force_delete_env_var_exists) {
+      force_delete = 1;
+   }
 
    if (argc <= 1) {
       Habit habit = {0};
@@ -234,6 +240,9 @@ main(int argc, char *argv[]) {
                printf("Habit %s created\n", habit.name);
             }
          } break;
+         case FORCE_DELETE_ARG: {
+            force_delete = 1;
+         } break;
          case HABIT_REMOVE_ARG: {
             Habit habit = {0};
             char *filename = "";
@@ -246,15 +255,20 @@ main(int argc, char *argv[]) {
                else fprintf(stderr, "%s does not exist\n", habit.name);
             } else {
                char choice = 0;
-               printf("Are you sure you want to delete this habit?: [y/N] ");
-               scanf("%c", &choice);
+               if (!force_delete) {
+                  printf("Are you sure you want to delete this habit?: [y/N] ");
+                  scanf("%c", &choice);
+               } else {
+                  choice = 'y';
+               }
                if (choice == 'y' || choice == 'Y') {
                   if (!remove(filename))
                      if (use_colors)
-                        printf(ANSI_YEL "%s" ANSI_RESET 
+                        printf(ANSI_YEL "%s" ANSI_RESET
                                " has been deleted successfully\n", habit.name);
                      else
-                        printf("%s has been deleted successfully\n", habit.name);
+                        printf("%s has been deleted successfully\n",
+                               habit.name);
                   else
                      fprintf(stderr, "failed to delete %s\n", habit.name);
 
@@ -268,7 +282,8 @@ main(int argc, char *argv[]) {
                               " was default, default habit is no longer set\n",
                               habit.name);
                         } else {
-                           printf("%s was default, default habit is no longer set\n",
+                           printf("%s was default, "
+                                  "default habit is no longer set\n",
                               habit.name);
                         }
                      } else {
@@ -319,7 +334,7 @@ main(int argc, char *argv[]) {
                      printf("%s", lh[lhc-1].name);
                      char *default_habit_name = default_habit_read();
                      int dhn = (default_habit_name != NULL) ?
-                        !strcmp(default_habit_name, 
+                        !strcmp(default_habit_name,
                                 lh[lhc-1].name)
                         : 0;
                      if (dhn) printf(" (default)");
@@ -364,8 +379,8 @@ main(int argc, char *argv[]) {
                habit.name = optarg;
                char *habit_path = habit_make_filename(&habit);
                if (file_exists(habit_path)) {
-                  if (use_colors) fprintf(stderr, "Habit " ANSI_YEL "%s" 
-                                          ANSI_RESET " doesn't exist\n", 
+                  if (use_colors) fprintf(stderr, "Habit " ANSI_YEL "%s"
+                                          ANSI_RESET " doesn't exist\n",
                                           habit.name);
                   else fprintf(stderr, "Habit %s doesn't exist\n", habit.name);
                } else if (default_habit_write(&habit)) {
@@ -387,7 +402,8 @@ main(int argc, char *argv[]) {
          case HABIT_DESELECT_DEFAULT_ARG: {
             char* default_path = "";
             if ((default_path = default_habit_read()) == NULL) {
-               fprintf(stderr, "Default habit is not set, nothing to unselect\n");
+               fprintf(stderr, "Default habit is not set, "
+                       "nothing to unselect\n");
             } else if (default_path != NULL) {
                char *default_habit_path_file = default_habit_path_make();
                remove(default_habit_path_file);
@@ -458,7 +474,8 @@ main(int argc, char *argv[]) {
                }
             }
 
-            if (habit_count != 1 && !strcmp(default_path, habits[current_habit].name)) {
+            if (habit_count != 1 
+               && !strcmp(default_path, habits[current_habit].name)) {
                // this prevents marking today in cases like 
                // ht -d 1 -H default_habit -d 1
                habits[current_habit].to_add_custom_days = 1;
@@ -476,21 +493,28 @@ main(int argc, char *argv[]) {
                   } else if (sscanf(optarg, "%d.%d", &month, &day) == 2
                              && month >= 1 && month <= 12
                              && day >= 1 && day <= 31) {
-                     new_day_timestamp = ymd_to_time_t(now->tm_year+1900, month, day);
-                  } else if (sscanf(optarg, "%d", &day) == 1 && day >= 1 && day <= 31) {
+                     new_day_timestamp = ymd_to_time_t(now->tm_year+1900,
+                                                       month, day);
+                  } else if (sscanf(optarg, "%d", &day) == 1 
+                             && day >= 1
+                             && day <= 31) {
                      new_day_timestamp = ymd_to_time_t(
                         now->tm_year+1900, now->tm_mon + 1, day);
                   } else {
-                     fprintf(stderr, "The provided date \"%s\" cannot be parsed\n", optarg);
+                     fprintf(stderr,
+                        "The provided date \"%s\" cannot be parsed\n", optarg);
                   }
                } else {
                   fprintf(stderr, "Please provide a custom day\n");
                }
 
                if (habits[current_habit].days_count == 0) {
-                  habit_add_day(&habits[current_habit], new_day_timestamp, DAY_COMPLETE);
+                  habit_add_day(&habits[current_habit],
+                                new_day_timestamp,
+                                DAY_COMPLETE);
                   if (use_colors)
-                     printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
+                     printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
+                            habits[current_habit].name);
                   else
                      printf("Habit \"%s\"", habits[current_habit].name);
                   printf(": %s: %s\n", date_str(&new_day_timestamp),
@@ -502,7 +526,8 @@ main(int argc, char *argv[]) {
                      int temp = existing_day->marked;
                      switch_day_mark(existing_day);
                      if (use_colors)
-                        printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
+                        printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
+                               habits[current_habit].name);
                      else
                         printf("Habit \"%s\"", habits[current_habit].name);
                      printf(": %s: %s -> %s\n", date_str(&new_day_timestamp),
@@ -525,7 +550,8 @@ main(int argc, char *argv[]) {
                                day_mark_str(DAY_COMPLETE));
                      } else {
                         if (use_colors)
-                           printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET, habits[current_habit].name);
+                           printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
+                                  habits[current_habit].name);
                         else
                            printf("Habit \"%s\"", habits[current_habit].name);
                         printf( ": the provided date %s is bigger than today\n",
@@ -607,7 +633,8 @@ main(int argc, char *argv[]) {
                      fprintf(stderr, "Habit %s doesn't exist\n", optarg);
                }
                else {
-                  habit_display_graph(&habit, is_default, graph_width, graph_year);
+                  habit_display_graph(&habit, is_default, graph_width, 
+                                      graph_year);
                   if (!is_preloaded) free(habit.days);
                }
                if (is_default) free(habit.name);
@@ -624,7 +651,9 @@ main(int argc, char *argv[]) {
                      habit_display_as_list(&habit, 1);
                      free(habit.days);
                   } else {
-                     fprintf(stderr, "Default habit has not been set, please provide a habit name\n");
+                     fprintf(stderr,
+                             "Default habit has not been set, "
+                             "please provide a habit name\n");
                   }
                   free(habit.name);
                } break;
@@ -636,7 +665,8 @@ main(int argc, char *argv[]) {
                      habit_display_graph(&habit, 1, graph_width, graph_year);
                      free(habit.days);
                   } else {
-                     fprintf(stderr, "Default habit has not been set, please provide a habit name\n");
+                     fprintf(stderr, "Default habit has not been set, "
+                             "please provide a habit name\n");
                   }
                   free(habit.name);
                } break;
@@ -648,7 +678,9 @@ main(int argc, char *argv[]) {
    for (int i = 0; i < habit_count; i++) {
       if (!habits[i].to_add_custom_days) {
          int dc = (habits[i].days_count != 0) ?
-            date_compare(habits[i].days[habits[i].days_count-1].timestamp, time(NULL)) : 2;
+            date_compare(habits[i].days[habits[i].days_count-1].timestamp, 
+                         time(NULL))
+            : 2;
 
          if (dc) {
             habit_add_today(&habits[i], DAY_COMPLETE);
@@ -672,9 +704,9 @@ main(int argc, char *argv[]) {
    }
 
    if (default_path != NULL) free(default_path);
-   free(habits);
+   if (habits != NULL) free(habits);
 
-   free(date_str_return_value);
+   if (date_str_return_value != NULL) free(date_str_return_value);
 
    return 0;
 }
