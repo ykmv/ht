@@ -607,6 +607,9 @@ main(int argc, char *argv[]) {
          case GRAPH_WIDTH_ARG: {
             graph_width = atoi(optarg);
          } break;
+         case GRAPH_YEAR_ARG: {
+            graph_year = atoi(optarg);
+         } break;
          case HABIT_DISPLAY_ARG: {
             Habit habit = {0};
             int is_default = 0;
@@ -1156,6 +1159,11 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
    int dc = habit->days_count-1;
 
    time_t t = time(NULL);
+   if (graph_year) {
+      struct tm *ti = localtime(&t);
+      ti->tm_year = graph_year-1900;
+      t = mktime(ti);
+   }
    time_t graph_limit = t-86400*GRAPH_XMAX*GRAPH_YMAX;
    struct tm *ti = localtime(&t);
    int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
@@ -1170,14 +1178,20 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
       int months_count = 0;
 
       int compare = 0;
+
       if (graph_year) {
-         for (int i = habit->days_count-1; i >= 0; i--) {
-            ti = localtime(&habit->days[i].timestamp);
-            if (ti->tm_year+1900 > graph_year) {
-               if (dc > 0) dc--;
-            }
+         for (int i = habit->days_count-1; i >= 0; i--)
+            if (habit->days[i].timestamp > t)
+               dc = i-1;
+
+         printf("Display year: ");
+         if (use_colors) {
+            printf(ANSI_YEL "%d\n" ANSI_RESET, graph_year);
+         } else {
+            printf("%d\n", graph_year);
          }
       }
+
       for (int y = GRAPH_YMAX-1; y >= 0; y--) {
          for (int x = GRAPH_XMAX-1; x >= 0; x--) {
             if (y == GRAPH_YMAX-1 && offset != 0 && offset != 7) {
@@ -1190,7 +1204,8 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
                      if (habit->days[dc].marked == DAY_COMPLETE
                         || habit->days[dc].marked == DAY_FAILED) {
                         graph[x][y] = habit->days[dc].marked;
-                        if (!width && 
+                        if (dc >= 0) dc--;
+                        if (!width &&
                            date_compare(graph_limit, habit->days[dc].timestamp)
                            == 1) {
                            dc = -1;
@@ -1199,7 +1214,6 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
                            dc = -1; 
                            graph_fillout = 10;
                         }
-                        if (dc >= 0) dc--;
                      }
                   }
                } else {
