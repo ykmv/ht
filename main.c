@@ -966,16 +966,23 @@ print_help(int no_default) {
       "             ht -c : display graph with a default habit\n"
       "     ht -c <habit> : display graph with a selected habit\n"
       "         -w <1-39> : specify the width of the graph (should be specified before -c)\n"
-      "         -y <year> : specify the year of the graph (should be specified before -c) <TBD>\n"
+      "         -y <year> : specify the year of the graph (should be specified before -c)\n"
       "             ht -C : display list of days of a default habit\n"
       "     ht -C <habit> : display list of days of a selected habit\n");
-   printf("\nUse $%s to select habit path\n", habit_folder_path_env_var);
-   printf("Set $%s to \"1\" to use nerd font symbols in the -c graph\n", nerd_font_var);
-   printf("<TBD> You can set custom width of the graph with $%s\n", graph_width_env_var);
-   printf("<TBD> You can disable remove confirmation with $%s\n", force_delete_env_var);
-   printf("\nIf you haven't been marking days for some time, the next time you\n"
-          "mark today, those previous days will be unmarked as failed.\n"
-          "To change this behaviour set $%s to \"0\"\n", mark_prev_unmarked_days_as_failed_env_var);
+
+   printf("\nSETTINGS:\n");
+   printf("These are environment variables that can be set in your shell\n");
+   printf("            %s : habits directory; default is \"~/.local/share/ht\"\n", habit_folder_path_env_var);
+   printf("     %s : the display date format (`-d` only accepts YYYY.MM.DD)\n", date_format_env_var);
+   printf("      Available options: YYYY.MM.DD, DD.MM.YYYY, MM.DD.YYYY\n");
+   printf("      Default: YYYY.MM.DD\n");
+   printf("           %s : set to `1` to use Nerd Font Symbols in `-c` graph\n", nerd_font_var);
+   printf(" %s : by default, all the previous unmarked days will be marked as failed\n", mark_prev_unmarked_days_as_failed_env_var);
+   printf("  set this variable to `0` disable this behaviour\n");
+   printf("     %s : the width of the `-c` graph\n", graph_width_env_var);
+   printf("    %s : set to `1` to disable confirmation in `-r`\n", force_delete_env_var);
+   printf("         %s : set to `0` to disable colours\n", colors_env_var);
+
    if (no_default)
       printf("This help message is displayed when no default habit was selected\n");
    print_version();
