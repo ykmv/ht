@@ -7,7 +7,7 @@
 #include <dirent.h>
 #include <unistd.h>
 
-// TODO: add -y to the -c argument to see a specific year
+// TODO: add different date formats to '-d'
 // TODO: as of now, it is very difficult to select a habit 
 //       (maybe use `fzf' if it is present in the system?)
 
@@ -177,6 +177,11 @@ main(int argc, char *argv[]) {
       !strcmp(force_delete_env_var_value, "1") : 0;
    if(force_delete_env_var_exists) {
       force_delete = 1;
+   }
+
+   char *graph_width_env_var_value = getenv(graph_width_env_var);
+   if (graph_width_env_var_value != NULL) {
+      graph_width = atoi(graph_width_env_var_value);
    }
 
    if (argc <= 1) {
@@ -495,7 +500,7 @@ main(int argc, char *argv[]) {
                              && day >= 1 && day <= 31) {
                      new_day_timestamp = ymd_to_time_t(now->tm_year+1900,
                                                        month, day);
-                  } else if (sscanf(optarg, "%d", &day) == 1 
+                  } else if (sscanf(optarg, "%d", &day) == 1
                              && day >= 1
                              && day <= 31) {
                      new_day_timestamp = ymd_to_time_t(
