@@ -150,7 +150,7 @@ main(int argc, char *argv[]) {
    int graph_width = 0;
    int graph_year = 0;
 
-   int no_add;
+   int no_add = 0;
 
    struct stat st = {0};
    int err = stat(habit_path, &st);
@@ -317,8 +317,8 @@ main(int argc, char *argv[]) {
                   }
                   free(default_habit_name);
                }
-               free(filename);
             }
+            if (filename != NULL) free(filename);
          } break;
          case HABIT_LIST_ARG: {
             struct dirent *de;
@@ -491,10 +491,11 @@ main(int argc, char *argv[]) {
             }
          } break;
          case HABIT_CUSTOM_DAY_ARG: {
-            time_t new_day_timestamp;
+            time_t new_day_timestamp = 0;
             int year, month, day;
             time_t time_now = time(NULL);
             struct tm *now = localtime(&time_now);
+            int date_broken = 0;
 
             if (habits == NULL && !no_add) {
                if (default_path != NULL) {
@@ -532,6 +533,7 @@ main(int argc, char *argv[]) {
                      new_day_timestamp = ymd_to_time_t(
                         now->tm_year+1900, now->tm_mon + 1, day);
                   } else {
+                     date_broken = 1;
                      fprintf(stderr,
                         "The provided date \"%s\" cannot be parsed\n", optarg);
                   }
@@ -539,64 +541,66 @@ main(int argc, char *argv[]) {
                   fprintf(stderr, "Please provide a custom day\n");
                }
 
-               if (habits[current_habit].days_count == 0) {
-                  habit_add_day(&habits[current_habit],
-                                new_day_timestamp,
-                                DAY_COMPLETE);
-                  if (use_colors)
-                     printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
-                            habits[current_habit].name);
-                  else
-                     printf("Habit \"%s\"", habits[current_habit].name);
-                  printf(": %s: %s\n", date_str(&new_day_timestamp),
-                         day_mark_str(DAY_COMPLETE));
-               } else {
-                  Day *existing_day = day_exists(&habits[current_habit], 
-                                                 new_day_timestamp);
-                  if (existing_day != NULL) {
-                     int temp = existing_day->marked;
-                     switch_day_mark(existing_day);
+               if (!date_broken) {
+                  if (habits[current_habit].days_count == 0) {
+                     habit_add_day(&habits[current_habit],
+                                   new_day_timestamp,
+                                   DAY_COMPLETE);
                      if (use_colors)
                         printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
                                habits[current_habit].name);
                      else
                         printf("Habit \"%s\"", habits[current_habit].name);
-                     printf(": %s: %s -> %s\n", date_str(&new_day_timestamp),
-                            day_mark_str(temp),
-                            day_mark_str(existing_day->marked));
+                     printf(": %s: %s\n", date_str(&new_day_timestamp),
+                            day_mark_str(DAY_COMPLETE));
                   } else {
-                     if (date_compare(time(NULL), new_day_timestamp) != -1) {
-                        habit_add_day(
-                           &habits[current_habit],
-                           new_day_timestamp,
-                           DAY_COMPLETE);
-                        if (use_colors) {
-                           printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
-                                  habits[current_habit].name);
-                        } else {
-                           printf("Habit \"%s\"", habits[current_habit].name);
-                        }
-                        printf(": %s: %s\n",
-                               date_str(&new_day_timestamp),
-                               day_mark_str(DAY_COMPLETE));
-                     } else {
+                     Day *existing_day = day_exists(&habits[current_habit], 
+                                                    new_day_timestamp);
+                     if (existing_day != NULL) {
+                        int temp = existing_day->marked;
+                        switch_day_mark(existing_day);
                         if (use_colors)
                            printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
                                   habits[current_habit].name);
                         else
                            printf("Habit \"%s\"", habits[current_habit].name);
-                        printf( ": the provided date %s is bigger than today\n",
-                               date_str(&new_day_timestamp));
-                     }
+                        printf(": %s: %s -> %s\n", date_str(&new_day_timestamp),
+                               day_mark_str(temp),
+                               day_mark_str(existing_day->marked));
+                     } else {
+                        if (date_compare(time(NULL), new_day_timestamp) != -1) {
+                           habit_add_day(
+                              &habits[current_habit],
+                              new_day_timestamp,
+                              DAY_COMPLETE);
+                           if (use_colors) {
+                              printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
+                                     habits[current_habit].name);
+                           } else {
+                              printf("Habit \"%s\"", habits[current_habit].name);
+                           }
+                           printf(": %s: %s\n",
+                                  date_str(&new_day_timestamp),
+                                  day_mark_str(DAY_COMPLETE));
+                        } else {
+                           if (use_colors)
+                              printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
+                                     habits[current_habit].name);
+                           else
+                              printf("Habit \"%s\"", habits[current_habit].name);
+                           printf( ": the provided date %s is bigger than today\n",
+                                  date_str(&new_day_timestamp));
+                        }
 
-                     if (habits[current_habit].
+                        if (habits[current_habit].
                            days[habits[current_habit].days_count-2].timestamp >
-                         habits[current_habit].
+                           habits[current_habit].
                            days[habits[current_habit].days_count-1].timestamp)
-                        day_sort(habits[current_habit].days,
-                                 habits[current_habit].days_count);
+                           day_sort(habits[current_habit].days,
+                                    habits[current_habit].days_count);
+                     }
                   }
-               } 
+               }
             } else if (!no_add) {
                fprintf(stderr,
                        "No habit name was provided (with `-H` arg) "
@@ -1275,13 +1279,14 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
                      if (habit->days[dc].marked == DAY_COMPLETE
                         || habit->days[dc].marked == DAY_FAILED) {
                         graph[x][y] = habit->days[dc].marked;
-                        /*if (dc >= 0)*/ dc--;
                         if (!width &&
                            date_compare(graph_limit, habit->days[dc].timestamp)
                            == 1) {
                            dc = -1;
                            graph_fillout = 10;
-                        } else if (!width && dc < 0) {
+                        }
+                        if (dc >= 0) dc--;
+                        if (!width && dc < 0) {
                            graph_fillout = 10;
                         }
                      }
