@@ -31,10 +31,16 @@ extern char *optarg;
 #define DATE_FORMAT_ISO8601 0
 #define DATE_FORMAT_EU      1
 #define DATE_FORMAT_US      2
+#define DATE_FORMAT_ISO8601_SLASH 3
+#define DATE_FORMAT_EU_SLASH      4
+#define DATE_FORMAT_US_SLASH      5
 
 #define DATE_FORMAT_ISO8601_STR "YYYY.MM.DD"
 #define DATE_FORMAT_EU_STR      "DD.MM.YYYY"
 #define DATE_FORMAT_US_STR      "MM.DD.YYYY"
+#define DATE_FORMAT_ISO8601_STR_SLASH "YYYY/MM/DD"
+#define DATE_FORMAT_EU_STR_SLASH      "DD/MM/YYYY"
+#define DATE_FORMAT_US_STR_SLASH      "MM/DD/YYYY"
 
 #define HABIT_CREATE_ARG           'a'
 #define HABIT_REMOVE_ARG           'r'
@@ -163,10 +169,16 @@ main(int argc, char *argv[]) {
    if (date_format_env_var_value != NULL) {
       if (!strcmp(DATE_FORMAT_ISO8601_STR, date_format_env_var_value))
          date_format = DATE_FORMAT_ISO8601;
-      if (!strcmp(DATE_FORMAT_US_STR, date_format_env_var_value))
+      else if (!strcmp(DATE_FORMAT_US_STR, date_format_env_var_value))
          date_format = DATE_FORMAT_US;
-      if (!strcmp(DATE_FORMAT_EU_STR, date_format_env_var_value))
+      else if (!strcmp(DATE_FORMAT_EU_STR, date_format_env_var_value))
          date_format = DATE_FORMAT_EU;
+      else if (!strcmp(DATE_FORMAT_ISO8601_STR_SLASH, date_format_env_var_value))
+         date_format = DATE_FORMAT_ISO8601_SLASH;
+      else if (!strcmp(DATE_FORMAT_US_STR_SLASH, date_format_env_var_value))
+         date_format = DATE_FORMAT_US_SLASH;
+      else if (!strcmp(DATE_FORMAT_EU_STR_SLASH, date_format_env_var_value))
+         date_format = DATE_FORMAT_EU_SLASH;
    } else {
       date_format = DATE_FORMAT_ISO8601;
    }
@@ -242,7 +254,9 @@ main(int argc, char *argv[]) {
                                        " already exists\n", habit.name);
                else fprintf(stderr, "Habit %s already exists\n", habit.name);
             } else {
-               printf("Habit %s created\n", habit.name);
+               if (use_colors) printf("Habit " ANSI_YEL "%s" ANSI_RESET 
+                                      " created\n", habit.name);
+               else printf("Habit %s created\n", habit.name);
             }
          } break;
          case FORCE_DELETE_ARG: {
@@ -975,6 +989,7 @@ print_help(int no_default) {
    printf("            %s : habits directory; default is \"~/.local/share/ht\"\n", habit_folder_path_env_var);
    printf("     %s : the display date format (`-d` only accepts YYYY.MM.DD)\n", date_format_env_var);
    printf("      Available options: YYYY.MM.DD, DD.MM.YYYY, MM.DD.YYYY\n");
+   printf("                         YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY\n");
    printf("      Default: YYYY.MM.DD\n");
    printf("           %s : set to `1` to use Nerd Font Symbols in `-c` graph\n", nerd_font_var);
    printf(" %s : by default, all the previous unmarked days will be marked as failed\n", mark_prev_unmarked_days_as_failed_env_var);
@@ -1063,7 +1078,7 @@ day_mark_str(int day_mark) {
             return ANSI_RED "fail" ANSI_RESET;
          } break;
          case DAY_UNMARKED: {
-            return ANSI_BLK "deleted" ANSI_RESET;
+            return ANSI_BGIBLK "deleted" ANSI_RESET;
          } break;
          default: return NULL;
       }
@@ -1160,10 +1175,6 @@ fillout_skipped_days(Habit *habit) {
 
 void
 habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
-   if (use_colors) printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
-   else printf("Habit: %s", habit->name);
-   if (is_default) printf(" (default)");
-   printf("\n");
    int graph[GRAPH_XMAX][GRAPH_YMAX] = {0};
    int last_column = 0;
    int pattern = 0;
@@ -1180,6 +1191,11 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
    struct tm *ti = localtime(&t);
    int offset = (ti->tm_wday == 0) ? 7 : ti->tm_wday;
    offset = 7 - offset;
+
+   if (use_colors) printf("Habit:" ANSI_YEL " %s" ANSI_RESET, habit->name);
+   else printf("Habit: %s", habit->name);
+   if (is_default) printf(" (default)");
+   printf("\n");
 
    if (habit->days_count > 0) {
       typedef struct {
@@ -1216,14 +1232,13 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
                      if (habit->days[dc].marked == DAY_COMPLETE
                         || habit->days[dc].marked == DAY_FAILED) {
                         graph[x][y] = habit->days[dc].marked;
-                        if (dc >= 0) dc--;
+                        /*if (dc >= 0)*/ dc--;
                         if (!width &&
                            date_compare(graph_limit, habit->days[dc].timestamp)
                            == 1) {
                            dc = -1;
                            graph_fillout = 10;
-                        } else if (!width && dc == 0) {
-                           dc = -1; 
+                        } else if (!width && dc < 0) {
                            graph_fillout = 10;
                         }
                      }
@@ -1406,6 +1421,15 @@ char *date_str(time_t *time) {
       } break;
       case DATE_FORMAT_US: {
          sprintf(date_str_return_value, "%02d.%02d.%d", mon, day, year);
+      } break;
+      case DATE_FORMAT_ISO8601_SLASH: {
+         sprintf(date_str_return_value, "%d/%02d/%02d", year, mon, day);
+      } break;
+      case DATE_FORMAT_EU_SLASH: {
+         sprintf(date_str_return_value, "%02d/%02d/%d", day, mon, year);
+      } break;
+      case DATE_FORMAT_US_SLASH: {
+         sprintf(date_str_return_value, "%02d/%02d/%d", mon, day, year);
       } break;
    }
    return date_str_return_value;
