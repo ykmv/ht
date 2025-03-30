@@ -165,37 +165,6 @@ main(int argc, char *argv[]) {
       use_colors = 0;
    }
 
-   char *date_format_env_var_value = getenv(date_format_env_var);
-   if (date_format_env_var_value != NULL) {
-      if (!strcmp(DATE_FORMAT_ISO8601_STR, date_format_env_var_value))
-         date_format = DATE_FORMAT_ISO8601;
-      else if (!strcmp(DATE_FORMAT_US_STR, date_format_env_var_value))
-         date_format = DATE_FORMAT_US;
-      else if (!strcmp(DATE_FORMAT_EU_STR, date_format_env_var_value))
-         date_format = DATE_FORMAT_EU;
-      else if (!strcmp(DATE_FORMAT_ISO8601_STR_SLASH, date_format_env_var_value))
-         date_format = DATE_FORMAT_ISO8601_SLASH;
-      else if (!strcmp(DATE_FORMAT_US_STR_SLASH, date_format_env_var_value))
-         date_format = DATE_FORMAT_US_SLASH;
-      else if (!strcmp(DATE_FORMAT_EU_STR_SLASH, date_format_env_var_value))
-         date_format = DATE_FORMAT_EU_SLASH;
-   } else {
-      date_format = DATE_FORMAT_ISO8601;
-   }
-   date_str_return_value = calloc(11, sizeof(char));
-
-   char *force_delete_env_var_value = getenv(force_delete_env_var);
-   int force_delete_env_var_exists = (force_delete_env_var_value != NULL) ?
-      !strcmp(force_delete_env_var_value, "1") : 0;
-   if(force_delete_env_var_exists) {
-      force_delete = 1;
-   }
-
-   char *graph_width_env_var_value = getenv(graph_width_env_var);
-   if (graph_width_env_var_value != NULL) {
-      graph_width = atoi(graph_width_env_var_value);
-   }
-
    if (argc <= 1) {
       Habit habit = {0};
       habit.name = NULL;
@@ -232,6 +201,37 @@ main(int argc, char *argv[]) {
       free(default_path);
       free(habit.days);
       return 0;
+   }
+
+   char *date_format_env_var_value = getenv(date_format_env_var);
+   if (date_format_env_var_value != NULL) {
+      if (!strcmp(DATE_FORMAT_ISO8601_STR, date_format_env_var_value))
+         date_format = DATE_FORMAT_ISO8601;
+      else if (!strcmp(DATE_FORMAT_US_STR, date_format_env_var_value))
+         date_format = DATE_FORMAT_US;
+      else if (!strcmp(DATE_FORMAT_EU_STR, date_format_env_var_value))
+         date_format = DATE_FORMAT_EU;
+      else if (!strcmp(DATE_FORMAT_ISO8601_STR_SLASH, date_format_env_var_value))
+         date_format = DATE_FORMAT_ISO8601_SLASH;
+      else if (!strcmp(DATE_FORMAT_US_STR_SLASH, date_format_env_var_value))
+         date_format = DATE_FORMAT_US_SLASH;
+      else if (!strcmp(DATE_FORMAT_EU_STR_SLASH, date_format_env_var_value))
+         date_format = DATE_FORMAT_EU_SLASH;
+   } else {
+      date_format = DATE_FORMAT_ISO8601;
+   }
+   date_str_return_value = calloc(11, sizeof(char));
+
+   char *force_delete_env_var_value = getenv(force_delete_env_var);
+   int force_delete_env_var_exists = (force_delete_env_var_value != NULL) ?
+      !strcmp(force_delete_env_var_value, "1") : 0;
+   if(force_delete_env_var_exists) {
+      force_delete = 1;
+   }
+
+   char *graph_width_env_var_value = getenv(graph_width_env_var);
+   if (graph_width_env_var_value != NULL) {
+      graph_width = atoi(graph_width_env_var_value);
    }
 
    int habit_count = 0;
