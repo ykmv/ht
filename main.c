@@ -7,14 +7,15 @@
 #include <dirent.h>
 #include <unistd.h>
 
-// TODO: add different date formats to '-d'
-// TODO: as of now, it is very difficult to select a habit 
+// TODO: as of now, it is very difficult to select a habit
 //       (maybe use `fzf' if it is present in the system?)
 
 // TODO: Add quantity to the habit (i.e. how many times the habit needs to be
 //       completed in a day)
 // TODO: Add frequency to the habit (i.e. once per day once per week, once per
 //       month, etc.)
+// TODO: have unmarked to fail functionality be applicable to certain habits
+// TODO: add different date formats to '-d'
 
 // TODO: If there are no habits `ht -l` will segfault if `ht` was compiled
 //       with `tcc`.
@@ -137,7 +138,9 @@ int file_exists(char *filename);
 void graph_cell_print(int cell);
 void fillout_skipped_days(Habit *habit);
 void habit_display_as_list(Habit *habit, int is_default);
-void habit_display_graph(Habit *habit, int is_default, int width, int graph_year);
+void habit_display_graph(Habit *habit, int is_default, int width, 
+                         int graph_year);
+int habit_file_exists(char* habit_name);
 char *date_str(time_t *time);
 
 int
@@ -146,6 +149,8 @@ main(int argc, char *argv[]) {
 
    int graph_width = 0;
    int graph_year = 0;
+
+   int no_add;
 
    struct stat st = {0};
    int err = stat(habit_path, &st);
@@ -445,9 +450,8 @@ main(int argc, char *argv[]) {
             print_version();
          } break;
          case HABIT_NON_DEFAULT_ARG: {
-            if (optarg == NULL) {
-               fprintf(stderr, "No habit name was provided\n");
-            } else {
+            if (!habit_file_exists(optarg)) {
+               no_add = 0;
                int habit_loaded = 0;
                for (int i = 0; i < habit_count; i++) {
                   if(!strcmp(optarg, habits[i].name)) {
@@ -475,6 +479,15 @@ main(int argc, char *argv[]) {
 
                   habit_file_read(&habits[current_habit]);
                }
+            } else {
+               no_add = 1;
+               if (use_colors) {
+                  fprintf(stderr, "The provided habit " ANSI_YEL "%s" ANSI_RESET
+                        " doesn't exist\n", optarg);
+               } else {
+                  fprintf(stderr, "The provided habit %s doesn't exist\n",
+                          optarg);
+               }
             }
          } break;
          case HABIT_CUSTOM_DAY_ARG: {
@@ -483,7 +496,7 @@ main(int argc, char *argv[]) {
             time_t time_now = time(NULL);
             struct tm *now = localtime(&time_now);
 
-            if (habits == NULL) {
+            if (habits == NULL && !no_add) {
                if (default_path != NULL) {
                   habit_count++;
                   habits = calloc(1, sizeof(Habit));
@@ -493,15 +506,14 @@ main(int argc, char *argv[]) {
                }
             }
 
-            if (habit_count != 1 
-               && !strcmp(default_path, habits[current_habit].name)) {
-               // this prevents marking today in cases like 
-               // ht -d 1 -H default_habit -d 1
-               habits[current_habit].to_add_custom_days = 1;
-               current_habit = 0;
-            }
-
-            if (habits != NULL) {
+            if (habits != NULL && !no_add) {
+               if (habit_count != 1
+                  && !strcmp(default_path, habits[current_habit].name)) {
+                  // this prevents marking today in cases like 
+                  // ht -d 1 -H default_habit -d 1
+                  habits[current_habit].to_add_custom_days = 1;
+                  current_habit = 0;
+               }
                habits[current_habit].to_add_custom_days = 1;
                if (optarg != NULL) {
                   if (sscanf(optarg, "%d.%d.%d", &year,&month,&day) == 3
@@ -585,8 +597,8 @@ main(int argc, char *argv[]) {
                                  habits[current_habit].days_count);
                   }
                } 
-            } else {
-               fprintf(stderr, 
+            } else if (!no_add) {
+               fprintf(stderr,
                        "No habit name was provided (with `-H` arg) "
                        "nor default habit was selected (with `-s` arg)\n");
             }
@@ -663,8 +675,28 @@ main(int argc, char *argv[]) {
             }
          } break;
          case '?': {
-         // TODO: make errors for each and every argument
             switch(optopt) {
+               case HABIT_CREATE_ARG: {
+                  fprintf(stderr, "No habit name was provided\n");
+               } break;
+               case HABIT_REMOVE_ARG: {
+                  fprintf(stderr, "No habit name was provided\n");
+               } break;
+               case HABIT_SELECT_DEFAULT_ARG: {
+                  fprintf(stderr, "No habit name was provided\n");
+               } break;
+               case HABIT_NON_DEFAULT_ARG: {
+                  fprintf(stderr, "No habit name was provided\n");
+               } break;
+               case HABIT_CUSTOM_DAY_ARG: {
+                  fprintf(stderr, "No date was provided\n");
+               } break;
+               case GRAPH_WIDTH_ARG: {
+                  fprintf(stderr, "No graph width was provided\n");
+               } break;
+               case GRAPH_YEAR_ARG: {
+                  fprintf(stderr, "No graph year was provided\n");
+               } break;
                case HABIT_DISPLAY_AS_LIST_ARG: {
                   Habit habit = {0};
                   habit.name = default_habit_read();
@@ -742,6 +774,17 @@ file_exists(char *filename) {
    } else {
       return 0;
    }
+}
+
+int
+habit_file_exists(char* habit_name) {
+   Habit habit = {
+      .name = habit_name,
+   };
+   char *filename = habit_make_filename(&habit);
+   int result = file_exists(filename);
+   free(filename);
+   return result;
 }
 
 int
