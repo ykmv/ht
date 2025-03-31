@@ -17,9 +17,6 @@
 // TODO: have unmarked to fail functionality be applicable to certain habits
 // TODO: add different date formats to '-d'
 
-// TODO: If there are no habits `ht -l` will segfault if `ht` was compiled
-//       with `tcc`.
-
 // A Habit Tracker
 //
 // Each habit is a separate CSV file with a name of habit
@@ -107,7 +104,7 @@ const char *date_format_env_var = "HTDATEFORMAT";
 const char *nerd_font_var = "HTNERD";
 const char *mark_prev_unmarked_days_as_failed_env_var = "HTUNMARKEDTOFAIL";
 const char *graph_width_env_var = "HTGRAPHWIDTH";
-const char *force_delete_env_var = "HTFORCEDELETE";
+const char *force_delete_env_var = "HTFORCEREMOVE";
 const char *colors_env_var = "HTCOLORS";
 
 static int use_colors = 1;
@@ -328,7 +325,7 @@ main(int argc, char *argv[]) {
                perror("ERROR");
                free(habit_path);
             } else {
-               Habit *lh; // list habits
+               Habit *lh = NULL; // list habits
                int lhc = 0; // list habit count
                while ((de = readdir(dr)) != NULL)
                   if (strcmp(de->d_name, "..")
@@ -392,7 +389,7 @@ main(int argc, char *argv[]) {
                      free(lh[lhc-1].name);
                      free(lh[lhc-1].days);
                   }
-               free(lh);
+               if (lh != NULL) free(lh);
                free(habit_path);
                closedir(dr);
             } 
@@ -577,7 +574,8 @@ main(int argc, char *argv[]) {
                               printf("Habit " ANSI_YEL "\"%s\"" ANSI_RESET,
                                      habits[current_habit].name);
                            } else {
-                              printf("Habit \"%s\"", habits[current_habit].name);
+                              printf("Habit \"%s\"", 
+                                     habits[current_habit].name);
                            }
                            printf(": %s: %s\n",
                                   date_str(&new_day_timestamp),
@@ -588,7 +586,7 @@ main(int argc, char *argv[]) {
                                      habits[current_habit].name);
                            else
                               printf("Habit \"%s\"", habits[current_habit].name);
-                           printf( ": the provided date %s is bigger than today\n",
+                           printf(": the provided date %s is bigger than today\n",
                                   date_str(&new_day_timestamp));
                         }
 

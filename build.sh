@@ -3,10 +3,10 @@
 COMPILER=gcc
 DEBUG=
 
-# which tcc 2>/dev/null >/dev/null
-# if [ $? = "0" ]; then
-# 	COMPILER=tcc
-# fi
+which tcc 2>/dev/null >/dev/null
+if [ $? = "0" ]; then
+	COMPILER=tcc
+fi
 
 if [ "$1" = "-i" ]; then
 	set -xe
@@ -17,8 +17,7 @@ fi
 if [ "$1" = "-r" ]; then
 	DEBUG=
 else 
-	COMPILER=gcc
-	DEBUG=-g
+	DEBUG=-gdwarf
 fi
 
 set -xe
