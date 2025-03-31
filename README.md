@@ -1,10 +1,6 @@
 # `ht` - CLI Habit Tracker
 A simple CLI habit tracker written in C. 
 
-Demo of `ht`:
-
-![htdemo](htdemo.gif)
-
 ## How to compile and install `ht`
 ```sh
 $ ./build.sh -r 
