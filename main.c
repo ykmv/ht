@@ -1453,8 +1453,10 @@ habit_display(Habit *habits, int habit_count, char *default_path,
       }
    } else {
       habit.name = optarg;
-      if (!strcmp(habit.name, default_path)) {
-         is_default = 1;
+      if (default_path != NULL) {
+         if (!strcmp(habit.name, default_path)) {
+            is_default = 1;
+         }
       }
 
       for (int i = 0; i < habit_count; i++) {
