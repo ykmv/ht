@@ -137,6 +137,8 @@ void fillout_skipped_days(Habit *habit);
 void habit_display_as_list(Habit *habit, int is_default);
 void habit_display_graph(Habit *habit, int is_default, int width, 
                          int graph_year);
+void habit_display(Habit *habits, int habit_count, char *default_path, 
+              int display_type, int width, int graph_year);
 int habit_file_exists(char* habit_name);
 char *date_str(time_t *time);
 
@@ -147,7 +149,9 @@ main(int argc, char *argv[]) {
    int graph_width = 0;
    int graph_year = 0;
 
-   int no_add = 0;
+   int no_add = 0; // the name is ambigiuous
+   // this var is used to indicate that the provided habit name is wrong, and no
+   // days should be added
 
    struct stat st = {0};
    int err = stat(habit_path, &st);
@@ -238,7 +242,6 @@ main(int argc, char *argv[]) {
 
    int habit_count = 0;
    int current_habit = 0;
-   int to_add_days = 0;
    Habit *habits = NULL;
    char *default_path = default_habit_read();
 
@@ -247,18 +250,22 @@ main(int argc, char *argv[]) {
    while ((option = getopt(argc, argv, ALLARGS)) != -1) { 
       switch (option) {
          case HABIT_CREATE_ARG: {
-            Habit habit = {0};
-            habit.name = optarg;
-            habit.stats.creation_timestamp = time(NULL);
+            if (optarg[0] != '-') {
+               Habit habit = {0};
+               habit.name = optarg;
+               habit.stats.creation_timestamp = time(NULL);
 
-            if (habit_file_create(&habit)) {
-               if (use_colors) fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
-                                       " already exists\n", habit.name);
-               else fprintf(stderr, "Habit %s already exists\n", habit.name);
+               if (habit_file_create(&habit)) {
+                  if (use_colors) fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                                          " already exists\n", habit.name);
+                  else fprintf(stderr, "Habit %s already exists\n", habit.name);
+               } else {
+                  if (use_colors) printf("Habit " ANSI_YEL "%s" ANSI_RESET 
+                                         " created\n", habit.name);
+                  else printf("Habit %s created\n", habit.name);
+               }
             } else {
-               if (use_colors) printf("Habit " ANSI_YEL "%s" ANSI_RESET 
-                                      " created\n", habit.name);
-               else printf("Habit %s created\n", habit.name);
+               fprintf(stderr, "The habit name can't start with '-'\n");
             }
          } break;
          case FORCE_DELETE_ARG: {
@@ -505,12 +512,14 @@ main(int argc, char *argv[]) {
             }
 
             if (habits != NULL && !no_add) {
-               if (habit_count != 1
-                  && !strcmp(default_path, habits[current_habit].name)) {
-                  // this prevents marking today in cases like 
-                  // ht -d 1 -H default_habit -d 1
-                  habits[current_habit].to_add_custom_days = 1;
-                  current_habit = 0;
+               if (default_path != NULL) {
+                  if (habit_count != 1
+                     && !strcmp(default_path, habits[current_habit].name)) {
+                     // this prevents marking today in cases like 
+                     // ht -d 1 -H default_habit -d 1
+                     habits[current_habit].to_add_custom_days = 1;
+                     current_habit = 0;
+                  }
                }
                habits[current_habit].to_add_custom_days = 1;
                if (optarg != NULL) {
@@ -606,36 +615,7 @@ main(int argc, char *argv[]) {
             }
          } break;
          case HABIT_DISPLAY_AS_LIST_ARG: {
-            Habit habit = {0};
-            int is_default = 0;
-            int is_preloaded = 0;
-            if (!strcmp(optarg, "-") || optarg[0] == '-') {
-               optind -= 1;
-               is_default++;
-               habit.name = default_habit_read();
-            } else {
-               habit.name = optarg;
-               for (int i = 0; i < habit_count; i++) {
-                  if (!strcmp(optarg, habits[i].name)) {
-                     is_preloaded = 1;
-                     habit = habits[i];
-                  }
-               }
-            }
-            if (!is_preloaded) {
-               if (habit_file_read(&habit)) {
-                  if (use_colors)
-                     fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
-                             " doesn't exist\n", optarg);
-                  else
-                     fprintf(stderr, "Habit %s doesn't exist\n", optarg);
-               }
-               else {
-                  habit_display_as_list(&habit, is_default);
-                  if (!is_preloaded) free(habit.days);
-               }
-               if (is_default) free(habit.name);
-            }
+            habit_display(habits, habit_count, default_path, 0, graph_width, graph_year);
          } break;
          case GRAPH_WIDTH_ARG: {
             graph_width = atoi(optarg);
@@ -644,37 +624,7 @@ main(int argc, char *argv[]) {
             graph_year = atoi(optarg);
          } break;
          case HABIT_DISPLAY_ARG: {
-            Habit habit = {0};
-            int is_default = 0;
-            int is_preloaded = 0;
-            if (!strcmp(optarg, "-") || optarg[0] == '-') {
-               optind -= 1;
-               is_default++;
-               habit.name = default_habit_read();
-            } else {
-               habit.name = optarg;
-               for (int i = 0; i < habit_count; i++) {
-                  if (!strcmp(optarg, habits[i].name)) {
-                     is_preloaded = 1;
-                     habit = habits[i];
-                  }
-               }
-            }
-            if (!is_preloaded)  {
-               if (habit_file_read(&habit)) {
-                  if (use_colors)
-                     fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
-                             " doesn't exist\n", optarg);
-                  else
-                     fprintf(stderr, "Habit %s doesn't exist\n", optarg);
-               }
-               else {
-                  habit_display_graph(&habit, is_default, graph_width, 
-                                      graph_year);
-                  if (!is_preloaded) free(habit.days);
-               }
-               if (is_default) free(habit.name);
-            }
+            habit_display(habits, habit_count, default_path, 1, graph_width, graph_year);
          } break;
          case '?': {
             switch(optopt) {
@@ -1274,19 +1224,16 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
                if (dc >= 0) {
                   compare = date_compare(habit->days[dc].timestamp, t);
                   if (compare == 0) {
-                     if (habit->days[dc].marked == DAY_COMPLETE
-                        || habit->days[dc].marked == DAY_FAILED) {
-                        graph[x][y] = habit->days[dc].marked;
-                        if (!width &&
-                           date_compare(graph_limit, habit->days[dc].timestamp)
-                           == 1) {
-                           dc = -1;
-                           graph_fillout = 10;
-                        }
-                        if (dc >= 0) dc--;
-                        if (!width && dc < 0) {
-                           graph_fillout = 10;
-                        }
+                     graph[x][y] = habit->days[dc].marked;
+                     if (!width &&
+                        date_compare(graph_limit, habit->days[dc].timestamp)
+                        == 1) {
+                        dc = -1;
+                        graph_fillout = 10;
+                     }
+                     if (dc >= 0) dc--;
+                     if (!width && dc < 0) {
+                        graph_fillout = 10;
                      }
                   }
                } else {
@@ -1391,14 +1338,13 @@ habit_display_graph(Habit *habit, int is_default, int width, int graph_year) {
    if (habit->stats.completed_days == 0
       && habit->stats.failed_days == 0)
       calc_stats(habit);
-   printf("Days total: %d;",
-          habit->days_count);
+   printf("Days total: %d;", habit->days_count);
    if (use_colors) {
-      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed %d;\n" ANSI_RESET, 
+      printf(ANSI_GRN " completed: %d;" ANSI_RED " failed: %d;\n" ANSI_RESET,
              habit->stats.completed_days,
              habit->stats.failed_days);
    } else {
-      printf(" completed: %d; failed %d;\n", 
+      printf(" completed: %d; failed: %d;\n", 
              habit->stats.completed_days,
              habit->stats.failed_days);
    }
@@ -1479,4 +1425,66 @@ char *date_str(time_t *time) {
       } break;
    }
    return date_str_return_value;
+}
+
+void
+habit_display(Habit *habits, int habit_count, char *default_path, 
+              int display_type, int width, int graph_year) {
+   Habit habit = {0};
+   int is_default = 0;
+   int is_preloaded = 0;
+   if (optarg[0] == '-') {
+      optind -= 1;
+      is_default = 1;
+      habit.name = default_path;
+      if (habit.name != NULL) {
+         if (!strcmp(habits[0].name, habit.name)) {
+            habit = habits[0];
+         } else {
+            habit_file_read(&habit);
+         }
+         if (display_type) {
+            habit_display_graph(&habit, is_default, width, graph_year);
+         } else {
+            habit_display_as_list(&habit, is_default);
+         }
+      } else {
+         fprintf(stderr, "No default habit was set\n");
+      }
+   } else {
+      habit.name = optarg;
+      if (!strcmp(habit.name, default_path)) {
+         is_default = 1;
+      }
+
+      for (int i = 0; i < habit_count; i++) {
+         if (!strcmp(optarg, habits[i].name)) {
+            is_preloaded = 1;
+            habit = habits[i];
+         }
+      }
+      if (!is_preloaded)  {
+         if (habit_file_read(&habit)) {
+            if (use_colors)
+               fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                       " doesn't exist\n", optarg);
+            else
+               fprintf(stderr, "Habit %s doesn't exist\n", optarg);
+         }
+         else {
+            if (display_type) {
+               habit_display_graph(&habit, is_default, width, graph_year);
+            } else {
+               habit_display_as_list(&habit, is_default);
+            }
+            if (!is_preloaded) free(habit.days);
+         }
+      } else {
+         if (display_type) {
+            habit_display_graph(&habit, is_default, width, graph_year);
+         } else {
+            habit_display_as_list(&habit, is_default);
+         }
+      }
+   }
 }
