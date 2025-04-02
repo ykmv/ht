@@ -414,6 +414,8 @@ main(int argc, char *argv[]) {
                } else if (default_habit_write(&habit)) {
                   fprintf(stderr, "Unable to write a default habit\n");
                } else {
+                  default_path = calloc(sizeof(optarg) + 1, sizeof(char));
+                  strcpy(default_path, optarg);
                   if (use_colors) 
                      printf(ANSI_YEL "%s" ANSI_RESET 
                             " has been selected as a default habit\n", 
@@ -599,12 +601,14 @@ main(int argc, char *argv[]) {
                                   date_str(&new_day_timestamp));
                         }
 
-                        if (habits[current_habit].
-                           days[habits[current_habit].days_count-2].timestamp >
-                           habits[current_habit].
-                           days[habits[current_habit].days_count-1].timestamp)
-                           day_sort(habits[current_habit].days,
-                                    habits[current_habit].days_count);
+                        if (habits[current_habit].days_count > 1) {
+                           if (habits[current_habit].
+                              days[habits[current_habit].days_count-2].timestamp >
+                              habits[current_habit].
+                              days[habits[current_habit].days_count-1].timestamp)
+                              day_sort(habits[current_habit].days,
+                                       habits[current_habit].days_count);
+                        }
                      }
                   }
                }
