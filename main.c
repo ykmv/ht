@@ -9,7 +9,7 @@
 
 // TODO: as of now, it is very difficult to select a habit
 //       (maybe use `fzf' if it is present in the system?)
-
+//       (or maybe use some sort of shorthand alias)
 // TODO: Add quantity to the habit (i.e. how many times the habit needs to be
 //       completed in a day)
 // TODO: Add frequency to the habit (i.e. once per day once per week, once per
@@ -19,9 +19,10 @@
 
 // A Habit Tracker
 //
-// Each habit is a separate CSV file with a name of habit
+// Each habit is a separate CSV file with a name of the habit
 // as the name of the file. Structure of CSV:
-//   Day,Marked
+//          (First line) creation_date,completed_days,failed_days
+// (All the other lines) day,mark
 
 extern int errno;
 extern char *optarg;
@@ -110,7 +111,7 @@ const char *colors_env_var = "HTCOLORS";
 static int use_colors = 1;
 static int force_delete = 0;
 static int date_format = DATE_FORMAT_ISO8601;
-static char *date_str_return_value;
+static char *date_str_return_value = NULL;
 
 int habit_file_create(Habit *habit);
 int habit_file_write(Habit *habit, char *mode);
@@ -204,8 +205,8 @@ main(int argc, char *argv[]) {
       calc_stats(&habit);
       habit_file_write(&habit, "w");
       free(habit.name);
-      free(default_path);
       free(habit.days);
+      free(default_path);
       return 0;
    }
 
@@ -243,20 +244,21 @@ main(int argc, char *argv[]) {
    int habit_count = 0;
    int current_habit = 0;
    Habit *habits = NULL;
-   char *default_path = default_habit_read();
+   char *default_habit_name = default_habit_read();
 
    opterr = 0;
    char option;
    while ((option = getopt(argc, argv, ALLARGS)) != -1) { 
       switch (option) {
          case HABIT_CREATE_ARG: {
-            if (optarg[0] != '-') {
+            if (optarg[0] != '-' && strlen(optarg) != 0) {
                Habit habit = {0};
                habit.name = optarg;
                habit.stats.creation_timestamp = time(NULL);
 
                if (habit_file_create(&habit)) {
-                  if (use_colors) fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
+                  if (use_colors) 
+                     fprintf(stderr, "Habit " ANSI_YEL "%s" ANSI_RESET
                                           " already exists\n", habit.name);
                   else fprintf(stderr, "Habit %s already exists\n", habit.name);
                } else {
@@ -265,7 +267,8 @@ main(int argc, char *argv[]) {
                   else printf("Habit %s created\n", habit.name);
                }
             } else {
-               fprintf(stderr, "The habit name can't start with '-'\n");
+               fprintf(stderr, "The habit name can't start with '-' nor "
+                               "can it be nothing\n");
             }
          } break;
          case FORCE_DELETE_ARG: {
@@ -334,10 +337,13 @@ main(int argc, char *argv[]) {
             } else {
                Habit *lh = NULL; // list habits
                int lhc = 0; // list habit count
-               while ((de = readdir(dr)) != NULL)
-                  if (strcmp(de->d_name, "..")
-                      && strcmp(de->d_name, ".")
-                      && strcmp(de->d_name, "default")) {
+               while ((de = readdir(dr)) != NULL) {
+                  if (strlen(de->d_name) >= 4) {
+                     int len = strlen(de->d_name)+1;
+                     if (strncmp(&de->d_name[len-5], ".csv", 4)) {
+                        continue;
+                     }
+
                      if (lhc == 0) {
                         lhc = 1;
                         lh = calloc(1, sizeof(Habit));
@@ -362,14 +368,11 @@ main(int argc, char *argv[]) {
                      printf("%s", lh[lhc-1].name);
                      char *default_habit_name = default_habit_read();
                      int dhn = (default_habit_name != NULL) ?
-                        !strcmp(default_habit_name,
-                                lh[lhc-1].name)
-                        : 0;
+                        !strcmp(default_habit_name, lh[lhc-1].name) : 0;
                      if (dhn) printf(" (default)");
                      free(default_habit_name);
                      if (lh[lhc-1].days_count > 0) {
-                        if (!date_compare(
-                              lh[lhc-1].
+                        if (!date_compare( lh[lhc-1].
                                  days[lh[lhc-1].days_count-1].timestamp,
                               time(NULL)))
                            printf(" (TODAY: %s)",
@@ -396,6 +399,7 @@ main(int argc, char *argv[]) {
                      free(lh[lhc-1].name);
                      free(lh[lhc-1].days);
                   }
+               }
                if (lh != NULL) free(lh);
                free(habit_path);
                closedir(dr);
@@ -414,14 +418,14 @@ main(int argc, char *argv[]) {
                } else if (default_habit_write(&habit)) {
                   fprintf(stderr, "Unable to write a default habit\n");
                } else {
-                  default_path = calloc(sizeof(optarg) + 1, sizeof(char));
-                  strcpy(default_path, optarg);
-                  if (use_colors) 
-                     printf(ANSI_YEL "%s" ANSI_RESET 
-                            " has been selected as a default habit\n", 
+                  default_habit_name = calloc(sizeof(optarg) + 1, sizeof(char));
+                  strcpy(default_habit_name, optarg);
+                  if (use_colors)
+                     printf(ANSI_YEL "%s" ANSI_RESET
+                            " has been selected as a default habit\n",
                             habit.name);
                   else
-                     printf("%s has been selected as a default habit\n", 
+                     printf("%s has been selected as a default habit\n",
                             habit.name);
                }
                free(habit_path);
@@ -504,19 +508,19 @@ main(int argc, char *argv[]) {
             int date_broken = 0;
 
             if (habits == NULL && !no_add) {
-               if (default_path != NULL) {
+               if (default_habit_name != NULL) {
                   habit_count++;
                   habits = calloc(1, sizeof(Habit));
-                  habits[0].name = default_path;
+                  habits[0].name = default_habit_name;
                   habit_file_read(&habits[0]);
                   habits[0].is_default = 1;
                }
             }
 
             if (habits != NULL && !no_add) {
-               if (default_path != NULL) {
+               if (default_habit_name != NULL) {
                   if (habit_count != 1
-                     && !strcmp(default_path, habits[current_habit].name)) {
+                     && !strcmp(default_habit_name, habits[current_habit].name)) {
                      // this prevents marking today in cases like 
                      // ht -d 1 -H default_habit -d 1
                      habits[current_habit].to_add_custom_days = 1;
@@ -619,7 +623,8 @@ main(int argc, char *argv[]) {
             }
          } break;
          case HABIT_DISPLAY_AS_LIST_ARG: {
-            habit_display(habits, habit_count, default_path, 0, graph_width, graph_year);
+            habit_display(habits, habit_count, default_habit_name, 0, 
+                          graph_width, graph_year);
          } break;
          case GRAPH_WIDTH_ARG: {
             graph_width = atoi(optarg);
@@ -628,7 +633,8 @@ main(int argc, char *argv[]) {
             graph_year = atoi(optarg);
          } break;
          case HABIT_DISPLAY_ARG: {
-            habit_display(habits, habit_count, default_path, 1, graph_width, graph_year);
+            habit_display(habits, habit_count, default_habit_name, 1, 
+                          graph_width, graph_year);
          } break;
          case '?': {
             switch(optopt) {
@@ -713,7 +719,7 @@ main(int argc, char *argv[]) {
       if (habits[i].days_count > 0) free(habits[i].days);
    }
 
-   if (default_path != NULL) free(default_path);
+   if (default_habit_name != NULL) free(default_habit_name);
    if (habits != NULL) free(habits);
 
    if (date_str_return_value != NULL) free(date_str_return_value);
@@ -765,7 +771,7 @@ habit_file_create(Habit *habit) {
    }
 }
 
-// habit.days needs to be freed after it is no longer needed in the program.
+// habit.days needs to be free()ed after it is no longer needed in the program.
 int
 habit_file_read(Habit *habit) {
    char *filename = habit_make_filename(habit);
@@ -1377,7 +1383,7 @@ habit_display_as_list(Habit *habit, int is_default) {
                   } break;
                }
          }
-         printf("day: %s %s",
+         printf("%s: %s",
                 date_str(&habit->days[i].timestamp),
                 day_mark_str(habit->days[i].marked));
          if (use_colors) {
