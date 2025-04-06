@@ -418,7 +418,7 @@ main(int argc, char *argv[]) {
                } else if (default_habit_write(&habit)) {
                   fprintf(stderr, "Unable to write a default habit\n");
                } else {
-                  default_habit_name = calloc(sizeof(optarg) + 1, sizeof(char));
+                  default_habit_name = calloc(strlen(optarg) + 1, sizeof(char));
                   strcpy(default_habit_name, optarg);
                   if (use_colors)
                      printf(ANSI_YEL "%s" ANSI_RESET
